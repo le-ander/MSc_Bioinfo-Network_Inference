@@ -191,26 +191,16 @@ Log_lik of max log_lik mod, AIC of min aic mod, BIC of min bic mod
 function get_best_id(gpparsets)
 	bestlist = []
 	for j = 1:size(gpparsets,2)
-<<<<<<< HEAD
 		row = find([i.lik for i in gpparsets[:,j]] .== maximum(i.lik for i in gpparsets[:,j]))[1]
-=======
-		row = find([i.dist for i in gpparsets[:,j]] .== maximum(i.dist for i in gpparsets[:,j]))[1]
->>>>>>> 15b46afe49036782d699ed440787ad9aa6ed8cd1
 		distid = gpparsets[row].id
 		row = find([i.modaic for i in gpparsets[:,j]] .== minimum(i.modaic for i in gpparsets[:,j]))[1]
 		aicid = gpparsets[row].id
 		row = find([i.modbic for i in gpparsets[:,j]] .== minimum(i.modbic for i in gpparsets[:,j]))[1]
 		bicid = gpparsets[row].id
 		if j == 1
-<<<<<<< HEAD
 			bestlist = [j, distid, aicid, bicid, gpparsets[distid].lik, gpparsets[aicid].modaic, gpparsets[bicid].modbic]
 		else
 			bestlist = hcat(bestlist,[j, distid, aicid, bicid, gpparsets[distid].lik, gpparsets[aicid].modaic, gpparsets[bicid].modbic])
-=======
-			bestlist = [j, distid, aicid, bicid, gpparsets[distid].dist, gpparsets[aicid].modaic, gpparsets[bicid].modbic]
-		else
-			bestlist = hcat(bestlist,[j, distid, aicid, bicid, gpparsets[distid].dist, gpparsets[aicid].modaic, gpparsets[bicid].modbic])
->>>>>>> 15b46afe49036782d699ed440787ad9aa6ed8cd1
 		end
 	end
 	bestlist
