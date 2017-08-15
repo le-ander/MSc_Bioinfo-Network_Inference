@@ -5,6 +5,7 @@ PyCall.@pyimport GPy.models as gmodels
 
 
 mutable struct Parset
+	id::Int
 	speciesnum::Int
 	intercount::Int
 	parents::Array{Int, 1}
@@ -52,7 +53,7 @@ function interpolate(x,y)
 		Y = reshape(y[:,i],(length(x),1))
 
 		m = gmodels.GPRegression(x,Y,kernel)
-		m[:optimize_restarts](num_restarts = 5)
+		m[:optimize_restarts](num_restarts = 5, verbose=false)
 		m[:plot](plot_density=false)
 
 		vals = m[:predict](x)
@@ -71,13 +72,15 @@ end
 function construct_parsets(numspecies, maxinter, interactions; selfinter=false)
 	allparents = collect(1:numspecies)
 	parsets::Array{Parset,1} = []
+	count::Int = 0
 
 	if selfinter
 		for i = 1:numspecies
 			for k = 1:maxinter
 				for l in Combinatorics.combinations(allparents, k)
 					for m in Iterators.product(Iterators.repeated(interactions,k)...)
-						push!(parsets, Parset(i, k, l, collect(m), [], 0.0, 0.0, 0.0, 0.0, 0.0))
+						count += 1
+						push!(parsets, Parset(count,i, k, l, collect(m), [], 0.0, 0.0, 0.0, 0.0, 0.0))
 					end
 				end
 			end
@@ -88,7 +91,8 @@ function construct_parsets(numspecies, maxinter, interactions; selfinter=false)
 			for k = 1:maxinter
 				for l in Combinatorics.combinations(filter(e -> e ≠ i, allparents), k)
 					for m in Iterators.product(Iterators.repeated(interactions,k)...)
-						push!(parsets, Parset(i, k, l, collect(m), [], 0.0, 0.0, 0.0, 0.0, 0.0))
+						count += 1
+						push!(parsets, Parset(count, i, k, l, collect(m), [], 0.0, 0.0, 0.0, 0.0, 0.0))
 					end
 				end
 			end
@@ -184,9 +188,11 @@ function weight_models!(parsets)
 end
 
 
+"""
+Create edgeweight array with columns:\\
+Target, Source, Interaction, Weight
+"""
 function weight_edges(parsets, interactions)
-	# Create edgeweight array
-	# Array columns: Target, Source, Interaction, Weight
 	numsp = size(parsets,2)
 	numint = length(interactions)
 	interdict = map(reverse, Dict(enumerate(interactions)))
@@ -207,16 +213,72 @@ function weight_edges(parsets, interactions)
 end
 
 
+"""
+    get_true_ranks(trueparents, parsets)
+Create ranks array with columns representing each specie and rows:\\
+Specie Number, ID, Distance, AIC, BIC, Distrank, AICrank, BICrank, AICweight, BICweight
+"""
+function get_true_ranks(trueparents, parsets)
+	ranks = []
+	for tp in trueparents
+		for parset in parsets[:, tp.speciesnum]
+			if tp.parents == parset.parents && tp.intertype == parset.intertype
+				distrank = find(sort([i.dist for i in parsets[:,tp.speciesnum]]) .== parset.dist)
+				aicrank = find(sort([i.modaic for i in parsets[:,tp.speciesnum]]) .== parset.modaic)
+				bicrank = find(sort([i.modbic for i in parsets[:,tp.speciesnum]]) .== parset.modbic)
+				if tp.speciesnum == 1
+					ranks = [parset.speciesnum, parset.id, parset.dist, parset.modaic, parset.modbic,
+								distrank, aicrank, bicrank, parset.aicweight, parset.bicweight]
+				else
+					ranks = hcat(ranks, [parset.speciesnum, parset.id, parset.dist, parset.modaic, parset.modbic,
+											distrank, aicrank, bicrank, parset.aicweight, parset.bicweight])
+				end
+				break
+			end
+		end
+	end
+	ranks
+end
+
+
+"""
+    get_best_id(parsets)
+###Create array with top scoring models. Columns representing each specie and rows:\\
+Specie Number, ID of min dist mod, ID of min aic mod, ID of min bic mod,
+Dist of min dist mod, AIC of min aic mod, BIC of min bic mod
+"""
+function get_best_id(parsets)
+	bestlist = []
+	for j = 1:size(parsets,2)
+		row = find([i.dist for i in parsets[:,j]] .== minimum(i.dist for i in parsets[:,j]))[1]
+		distid = parsets[row].id
+		row = find([i.modaic for i in parsets[:,j]] .== minimum(i.modaic for i in parsets[:,j]))[1]
+		aicid = parsets[row].id
+		row = find([i.modbic for i in parsets[:,j]] .== minimum(i.modbic for i in parsets[:,j]))[1]
+		bicid = parsets[row].id
+		if j == 1
+			bestlist = [j, distid, aicid, bicid, parsets[distid].dist, parsets[aicid].modaic, parsets[bicid].modbic]
+		else
+			bestlist = hcat(bestlist,[j, distid, aicid, bicid, parsets[distid].dist, parsets[aicid].modaic, parsets[bicid].modbic])
+		end
+	end
+	bestlist
+end
+
 ################################################################################
 
 
 x, y = simulate()
 
-
 const numspecies = size(y,2)
 const maxinter = 2
 const interactions = [:Activation, :Repression]
 const fixparm = [0.1 0.2 0.2 0.4 0.3; 0.4 0.4 0.4 0.1 0.3]
+const trueparents = [Parset(0, 1, 1, [5], [:Activation], [], 0.0, 0.0, 0.0, 0.0, 0.0),
+						Parset(0, 2, 2, [1, 5], [:Activation, :Repression], [], 0.0, 0.0, 0.0, 0.0, 0.0),
+						Parset(0, 3, 1, [1], [:Activation], [], 0.0, 0.0, 0.0, 0.0, 0.0),
+						Parset(0, 4, 2, [1, 3], [:Activation, :Repression], [], 0.0, 0.0, 0.0, 0.0, 0.0),
+						Parset(0, 5, 2, [2, 4], [:Repression, :Activation], [], 0.0, 0.0, 0.0, 0.0, 0.0)]
 
 xmu, xvar, xdotmu, xdotvar = interpolate(x, y)
 
@@ -227,3 +289,7 @@ optimise_models!(parsets, fixparm, xmu, xdotmu)
 weight_models!(parsets)
 
 edgeweights = weight_edges(parsets, interactions)
+
+ranks = get_true_ranks(trueparents, parsets)
+
+bestmodels = get_best_id(parsets)
