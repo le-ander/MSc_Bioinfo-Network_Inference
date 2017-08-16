@@ -26,14 +26,14 @@ function simulate()
 		du[5] = 0.3-0.3*u[5]+2.0*((u[4]^2.0)/(1.0^2.0+u[4]^2.0))*(1.0/(1.0+(u[2]/0.5)^3.0))
 	end
 
-	u0 = [1.0;0.5;1.0;1.5;0.5] # Define initial conditions
+	u0 = [1.0;0.5;1.0;0.5;0.5] # Define initial conditions
 	tspan = (0.0,20.0) # Define timespan for solving ODEs
 	prob = DifferentialEquations.ODEProblem(odesys,u0,tspan) # Formalise ODE problem
 
-	sol = DifferentialEquations.solve(prob, DifferentialEquations.RK4(), dt=1.0) # Solve ODEs with RK4 solver
+	sol = DifferentialEquations.solve(prob, DifferentialEquations.RK4(), saveat=1.0) # Solve ODEs with RK4 solver
 	x = reshape(sol.t,(length(sol.t),1))
 	y = hcat(sol.u...)'
-	y .+= reshape(rand(Distributions.Normal(0, 0.05), length(y)), size(y))
+	y .+= reshape(rand(Distributions.Normal(0, 0.1), length(y)), size(y))
 	x, y
 end
 
@@ -51,6 +51,11 @@ function interpolate(x,y)
 		Y = reshape(y[:,i],(length(x),1))
 
 		m = gmodels.GPRegression(x,Y,kernel)
+
+		# m[:rbf]["variance"][:constrain_fixed](1e-1)
+		# m[:rbf]["lengthscale"][:constrain_bounded](0.0,5.0)
+		m[:Gaussian_noise]["variance"][:constrain_fixed](1e-10)
+
 		m[:optimize_restarts](num_restarts = 5, verbose=false)
 		m[:plot](plot_density=false)
 
@@ -192,11 +197,11 @@ function get_best_id(gpparsets)
 	bestlist = []
 	for j = 1:size(gpparsets,2)
 		row = find([i.lik for i in gpparsets[:,j]] .== maximum(i.lik for i in gpparsets[:,j]))[1]
-		distid = gpparsets[row].id
+		distid = gpparsets[row,j].id
 		row = find([i.modaic for i in gpparsets[:,j]] .== minimum(i.modaic for i in gpparsets[:,j]))[1]
-		aicid = gpparsets[row].id
+		aicid = gpparsets[row,j].id
 		row = find([i.modbic for i in gpparsets[:,j]] .== minimum(i.modbic for i in gpparsets[:,j]))[1]
-		bicid = gpparsets[row].id
+		bicid = gpparsets[row,j].id
 		if j == 1
 			bestlist = [j, distid, aicid, bicid, gpparsets[distid].lik, gpparsets[aicid].modaic, gpparsets[bicid].modbic]
 		else
@@ -214,7 +219,6 @@ x, y = simulate()
 
 const numspecies = size(y,2)
 const maxinter = 2
-const interactions = [:Activation, :Repression]
 const fixparm = [0.1 0.2 0.2 0.4 0.3; 0.4 0.4 0.4 0.1 0.3]
 const trueparents = [GPparset(0, 1, 1, [5], 0.0, 0.0, 0.0, 0.0, 0.0),
 						GPparset(0, 2, 2, [1, 5], 0.0, 0.0, 0.0, 0.0, 0.0),

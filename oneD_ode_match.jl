@@ -28,14 +28,14 @@ function simulate()
 		du[5] = 0.3-0.3*u[5]+2.0*((u[4]^2.0)/(1.0^2.0+u[4]^2.0))*(1.0/(1.0+(u[2]/0.5)^3.0))
 	end
 
-	u0 = [1.0;0.5;1.0;1.5;0.5] # Define initial conditions
+	u0 = [1.0;0.5;1.0;0.5;0.5] # Define initial conditions
 	tspan = (0.0,20.0) # Define timespan for solving ODEs
 	prob = DifferentialEquations.ODEProblem(odesys,u0,tspan) # Formalise ODE problem
 
-	sol = DifferentialEquations.solve(prob, DifferentialEquations.RK4(), dt=1.0) # Solve ODEs with RK4 solver
+	sol = DifferentialEquations.solve(prob, DifferentialEquations.RK4(), saveat=1.0) # Solve ODEs with RK4 solver
 	x = reshape(sol.t,(length(sol.t),1))
 	y = hcat(sol.u...)'
-	y .+= reshape(rand(Distributions.Normal(0, 0.1), length(y)), size(y))
+	# y .+= reshape(rand(Distributions.Normal(0, 0.1), length(y)), size(y))
 	x, y
 end
 
@@ -53,6 +53,11 @@ function interpolate(x,y)
 		Y = reshape(y[:,i],(length(x),1))
 
 		m = gmodels.GPRegression(x,Y,kernel)
+
+		# m[:rbf]["variance"][:constrain_fixed](1e-1)
+		# m[:rbf]["lengthscale"][:constrain_bounded](0.0,5.0)
+		# m[:Gaussian_noise]["variance"][:constrain_fixed](0.1)
+
 		m[:optimize_restarts](num_restarts = 5, verbose=false)
 		m[:plot](plot_density=false)
 
@@ -127,7 +132,6 @@ function construct_ode(topology, fixparm, xmu, xdotmu)
 					fact -= ones(Float64, size(xmu,1))
 				end
 				it += 2
-				missing = false
 				fact += (xmu[:,parent[2]] .^ p[it]) ./ (p[it+1] ^ p[it] + xmu[:,parent[2]] .^ p[it])
 			end
 		end
@@ -251,11 +255,11 @@ function get_best_id(parsets)
 	bestlist = []
 	for j = 1:size(parsets,2)
 		row = find([i.dist for i in parsets[:,j]] .== minimum(i.dist for i in parsets[:,j]))[1]
-		distid = parsets[row].id
+		distid = parsets[row,j].id
 		row = find([i.modaic for i in parsets[:,j]] .== minimum(i.modaic for i in parsets[:,j]))[1]
-		aicid = parsets[row].id
+		aicid = parsets[row,j].id
 		row = find([i.modbic for i in parsets[:,j]] .== minimum(i.modbic for i in parsets[:,j]))[1]
-		bicid = parsets[row].id
+		bicid = parsets[row,j].id
 		if j == 1
 			bestlist = [j, distid, aicid, bicid, parsets[distid].dist, parsets[aicid].modaic, parsets[bicid].modbic]
 		else
