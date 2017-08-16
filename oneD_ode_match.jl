@@ -32,7 +32,7 @@ function simulate()
 	tspan = (0.0,20.0) # Define timespan for solving ODEs
 	prob = DifferentialEquations.ODEProblem(odesys,u0,tspan) # Formalise ODE problem
 
-	sol = DifferentialEquations.solve(prob, DifferentialEquations.RK4(), saveat=1.0) # Solve ODEs with RK4 solver
+	sol = DifferentialEquations.solve(prob, DifferentialEquations.RK4(), saveat=0.5) # Solve ODEs with RK4 solver
 	x = reshape(sol.t,(length(sol.t),1))
 	y = hcat(sol.u...)'
 	# y .+= reshape(rand(Distributions.Normal(0, 0.1), length(y)), size(y))
@@ -169,6 +169,7 @@ function optimise_models!(parsets, fixparm, xmu, xdotmu)
 		try
 			optimise_params!(par,fixparm,xmu, xdotmu)
 		catch
+			println("Warning: could not complete optimisation of 1 model")
 			par.params = [NaN]
 			par.modaic = Inf
 			par.dist = Inf
@@ -297,3 +298,5 @@ edgeweights = weight_edges(parsets, interactions)
 ranks = get_true_ranks(trueparents, parsets)
 
 bestmodels = get_best_id(parsets)
+
+ranks

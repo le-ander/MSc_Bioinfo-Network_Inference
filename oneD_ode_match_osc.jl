@@ -25,14 +25,14 @@ function simulate()
 		du[2] = 0.2 - 0.9*u[2] + 2.0*((u[1]^5.0)/(1.5^5.0+u[1]^5.0))
 		du[3] = 0.2 - 0.7*u[3] + 2.0*((u[1]^5.0)/(1.5^5.0+u[1]^5.0))
 		du[4] = 0.2 - 1.5*u[4] + 2.0*((u[1]^5.0)/(1.5^5.0+u[1]^5.0)) + 2.0*(1.0/(1.0+(u[3]/1.5)^5.0))
-		du[5] = 0.2 - 1.5*u[5] + 2.0*((u[4]^5.0)/(1.5^5.0+u[4]^5.0)) + 2.0*(1.0/(1.0+(u[2]/0.5)^3.0))
+		du[5] = 0.2 - 1.5*u[5] + 2.0*((u[4]^5.0)/(1.5^5.0+u[4]^5.0)) + 2.0*(1.0/(1.0+(u[2]/1.5)^3.0))
 	end
 
 	u0 = [1.0;0.5;1.0;0.5;0.5] # Define initial conditions
-	tspan = (0.0,20.0) # Define timespan for solving ODEs
+	tspan = (0.0,30.0) # Define timespan for solving ODEs
 	prob = DifferentialEquations.ODEProblem(odesys,u0,tspan) # Formalise ODE problem
 
-	sol = DifferentialEquations.solve(prob, DifferentialEquations.RK4(), saveat=0.5) # Solve ODEs with RK4 solver
+	sol = DifferentialEquations.solve(prob, DifferentialEquations.RK4(), saveat=0.3) # Solve ODEs with RK4 solver
 	x = reshape(sol.t,(length(sol.t),1))
 	y = hcat(sol.u...)'
 	# y .+= reshape(rand(Distributions.Normal(0, 0.01), length(y)), size(y))
@@ -297,3 +297,6 @@ edgeweights = weight_edges(parsets, interactions)
 ranks = get_true_ranks(trueparents, parsets)
 
 bestmodels = get_best_id(parsets)
+
+
+ranks
