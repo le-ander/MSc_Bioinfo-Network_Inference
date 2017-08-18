@@ -11,7 +11,7 @@ export Parset, GPparset,
 		simulate, interpolate,
 		construct_parsets, construct_ode, construct_ode_osc,
 		optimise_params!, optimise_models!, weight_models!,
-		weight_edges, get_true_ranks, get_best_id
+		weight_edges, get_true_ranks, get_best_id, edgesummary
 
 
 mutable struct Parset
@@ -332,7 +332,7 @@ function optimise_params!(gppar::GPparset, x, y)
 end
 
 
-function optimise_models!(parsets::Array{Parset,2}, fixparm, xmu, xdotmu, osc, gpsubtract=true)
+function optimise_models!(parsets::Array{Parset,2}, fixparm, xmu, xdotmu, osc; gpsubtract=true)
 	@progress "Optimising parameters" for par in parsets
 		try
 			optimise_params!(par,fixparm,xmu,xdotmu,osc)
@@ -516,6 +516,43 @@ function get_best_id(parsets::Array{GPparset,2})
 		end
 	end
 	bestlist
+end
+
+
+function edgesummary(edgeweights,trueparents)
+	othersum = [0.0, 0.0]
+	truedges = Array{Any,2}(1,1)
+	first = true
+	if size(edgeweights,1) == length(trueparents)^2
+		for i in 1:size(edgeweights,1)
+			if edgeweights[i,2] in trueparents[convert(Int,edgeweights[i,1])].parents
+				if first
+					truedges = edgeweights[i,:]'
+					first = false
+				else
+					truedges = vcat(truedges, edgeweights[i,:]')
+				end
+			else
+				othersum .+= edgeweights[i,[3,4]]
+			end
+		end
+	else
+		for i in 1:size(edgeweights,1)
+			thispset = trueparents[convert(Int,edgeweights[i,1])]
+			if edgeweights[i,2] in thispset.parents &&
+					[edgeweights[i,3]] == thispset.intertype[find(thispset.parents .== edgeweights[i,2])]
+				if first
+					truedges = reshape(edgeweights[i,:],(1,:))
+					first = false
+				else
+					truedges = vcat(truedges, reshape(edgeweights[i,:],(1,:)))
+				end
+			else
+				othersum .+= edgeweights[i,[4,5]]
+			end
+		end
+	end
+	truedges, othersum
 end
 
 

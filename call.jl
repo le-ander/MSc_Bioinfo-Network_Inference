@@ -1,4 +1,5 @@
 push!(LOAD_PATH, "/cluster/home/ld2113/work/Final-Project/")
+push!(LOAD_PATH, "/media/leander/Daten/Data/Imperial/Projects/Final Project/Final-Project")
 
 using GPinf
 
@@ -9,16 +10,16 @@ tspan = (0.0,20.0)
 σ = 0.0
 
 maxinter = 2
-slfint = true
-gpsbt = false
+slfint = false
+gpsbt = true
 
-# interactions = [:Activation, :Repression]
-interactions = nothing
+interactions = [:Activation, :Repression]
+# interactions = nothing
 
 gpnum = 5
 # gpnum = nothing
 
-rmfl = true
+rmfl = false
 
 @show osc; @show tspan; @show δt; @show σ; @show maxinter; @show slfint
 @show gpsbt; @show interactions; @show gpnum; @show rmfl
@@ -90,3 +91,7 @@ edgeweights = weight_edges(parsets, interactions)
 ranks = get_true_ranks(trueparents, parsets)
 
 bestmodels = get_best_id(parsets)
+
+truedges, othersum = edgesummary(edgeweights,trueparents)
+
+ranks
