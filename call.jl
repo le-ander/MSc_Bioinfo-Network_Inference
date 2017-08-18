@@ -3,9 +3,11 @@ push!(LOAD_PATH, "/cluster/home/ld2113/work/Final-Project/")
 using GPinf
 
 
+osc = false
 tspan = (0.0,20.0)
-δt = 0.5
+δt = 1.0
 σ = 0.0
+
 maxinter = 2
 slfint = true
 gpsbt = false
@@ -13,7 +15,13 @@ gpsbt = false
 # interactions = [:Activation, :Repression]
 interactions = nothing
 
-osc = false
+gpnum = 5
+# gpnum = nothing
+
+rmfl = true
+
+@show osc; @show tspan; @show δt; @show σ; @show maxinter; @show slfint
+@show gpsbt; @show interactions; @show gpnum; @show rmfl
 
 ################################################################################
 
@@ -68,7 +76,8 @@ x,y = simulate(odesys, tspan, δt; noise=σ)
 # y = y[21:41,:]
 numspecies = size(y,2)
 
-xmu, xvar, xdotmu, xdotvar = interpolate_single(x, y)
+xnew, xmu, xvar, xdotmu, xdotvar = interpolate(x, y, rmfl, gpnum)
+# xnew2, xmu2, xvar2, xdotmu2, xdotvar2 = interpolate(x, y, rmfl, gpnum)
 
 parsets = construct_parsets(numspecies, maxinter, interactions; selfinter=slfint, gpsubtract=gpsbt)
 

@@ -5,9 +5,10 @@ import DifferentialEquations, PyCall, PyPlot, Distributions, Optim, Combinatoric
 
 PyCall.@pyimport GPy.kern as gkern
 PyCall.@pyimport GPy.models as gmodels
+PyCall.@pyimport GPy.util.multioutput as gmulti
 
 export Parset, GPparset,
-		simulate, interpolate_single,
+		simulate, interpolate,
 		construct_parsets, construct_ode, construct_ode_osc,
 		optimise_params!, optimise_models!, weight_models!,
 		weight_edges, get_true_ranks, get_best_id
@@ -54,25 +55,23 @@ function simulate(odesys, tspan, step; noise=0.0)
 end
 
 
-function interpolate_single(x,y)
-	n = size(y,2)
-
+function interpolate(x, y, rmfl::Bool, gpnum::Void)
 	kernel = gkern.RBF(input_dim=1)
 	xmu = Array{Float64}(size(y))
 	xvar = Array{Float64}(size(y))
 	xdotmu = Array{Float64}(size(y))
 	xdotvar = Array{Float64}(size(y))
 
-	for i = 1:n
-		Y = reshape(y[:,i],(length(x),1))
+	for i = 1:size(y,2)
+		Y = reshape(y[:,i],(:,1))
 
 		m = gmodels.GPRegression(x,Y,kernel)
 
 		# m[:rbf]["variance"][:constrain_fixed](1e-1)
 		# m[:rbf]["lengthscale"][:constrain_bounded](0.0,5.0)
-		m[:Gaussian_noise]["variance"][:constrain_fixed](1e-10)
+		# m[:Gaussian_noise]["variance"][:constrain_fixed](0.1)
 
-		m[:optimize_restarts](num_restarts = 5, verbose=false)
+		m[:optimize_restarts](num_restarts = 5, verbose=false, parallel=false)
 		m[:plot](plot_density=false)
 
 		# println(m[:param_array])
@@ -80,13 +79,72 @@ function interpolate_single(x,y)
 		vals = m[:predict](x)
 		deriv = m[:predict_jacobian](x)
 
-		xmu[:,i] = reshape(vals[1], size(y,1))
-		xvar[:,i] = reshape(vals[2], size(y,1))
-		xdotmu[:,i] = reshape(deriv[1], size(y,1))
-		xdotvar[:,i] = reshape(deriv[2], size(y,1))
+		xmu[:,i] = vals[1][:]
+		xvar[:,i] = vals[2][:]
+		xdotmu[:,i] = deriv[1][:]
+		xdotvar[:,i] = deriv[2][:]
+	end
+	if rmfl
+		xmu = xmu[2:end-1,:]; xvar = xvar[2:end-1,:]
+		xdotmu = xdotmu[2:end-1,:]; xdotvar = xdotvar[2:end-1,:]
+		x = x[2:end-1,:]
+	end
+	x, xmu, xvar, xdotmu, xdotvar
+end
+
+function interpolate(x, y, rmfl::Bool, gpnum::Int)
+	speciesnum = size(y,2)
+	eulersx = Vector{Float64}((length(x))*2)
+	eulersy = zeros((length(x))*2,speciesnum)
+	Δ = 1e-4
+	for (i, val) in enumerate(x)
+		eulersx[i*2-1] = val - Δ/2
+		eulersx[i*2] = val + Δ/2
 	end
 
-	xmu, xvar, xdotmu, xdotvar
+	count = zeros(Int, speciesnum)'
+	xmu = zeros(size(y))
+	xvar = zeros(size(y))
+	xdotmu = Array{Float64}(convert(Int,size(eulersy,1)/2),speciesnum)
+
+	for comb in Combinatorics.combinations(1:speciesnum, gpnum)
+		ytemp = [reshape(y[:,i],(:,1)) for i in comb]
+		icm = gmulti.ICM(input_dim=1,num_outputs=gpnum,kernel=gkern.RBF(1))
+		m = gmodels.GPCoregionalizedRegression([x for i in comb],ytemp,kernel=icm)
+
+		# m[:ICM][:rbf]["variance"][:constrain_fixed](1e-1)
+		# m[:ICM][:rbf]["lengthscale"][:constrain_bounded](0.0,5.0)
+		# m[:mixed_noise][:constrain_fixed](0.1)
+
+		m[:optimize_restarts](num_restarts = 8, verbose=false, parallel=true)
+
+		# println(m[:param_array])
+
+		for (i,species) in enumerate(comb)
+			count[species] += 1
+			prediction = m[:predict](hcat(x,[i-1 for t in x]), Y_metadata=Dict("output_index" => Int[i-1 for t in x]))
+			eulersy[:,species] .+= m[:predict](hcat(eulersx,[i-1 for t in eulersx]), Y_metadata=Dict("output_index" => Int[i-1 for t in eulersx]))[1][:]
+			xmu[:,species] .+= prediction[1][:]
+			xvar[:,species] .+= prediction[2][:]
+		end
+	end
+
+	xmu ./= count
+	xvar ./= count
+	eulersy ./= count
+	xnew = x[2:end-1,:]
+
+	for i = 1:length(xdotmu)
+		xdotmu[i] = (eulersy[2*i]-eulersy[2*i-1]) / Δ
+	end
+
+	if rmfl
+		xmu = xmu[2:end-1,:]; xvar = xvar[2:end-1,:]
+		xdotmu = xdotmu[2:end-1,:]
+		x = x[2:end-1,:]
+	end
+	x, xmu, xvar, xdotmu, nothing
+
 end
 
 
