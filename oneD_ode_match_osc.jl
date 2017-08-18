@@ -298,5 +298,4 @@ ranks = get_true_ranks(trueparents, parsets)
 
 bestmodels = get_best_id(parsets)
 
-
 ranks

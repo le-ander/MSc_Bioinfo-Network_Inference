@@ -243,6 +243,3 @@ ranks = get_true_ranks(trueparents, gpparsets)
 bestmodels = get_best_id(gpparsets)
 
 ranks
-
-# import Plots
-# Plots.scatter(x[:,1],xdotmu[:,1])

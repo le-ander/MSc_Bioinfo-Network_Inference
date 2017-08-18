@@ -86,7 +86,6 @@ function construct_gpparsets(numspecies, maxinter; selfinter=false)
 				end
 			end
 		end
-
 	else
 		for i = 1:numspecies
 			for k = 1:maxinter
@@ -97,7 +96,6 @@ function construct_gpparsets(numspecies, maxinter; selfinter=false)
 			end
 		end
 	end
-
 	reshape(gpparsets,(:,numspecies))
 end
 
@@ -240,7 +238,4 @@ ranks = get_true_ranks(trueparents, gpparsets)
 
 bestmodels = get_best_id(gpparsets)
 
-
-
-# import Plots
-# Plots.scatter(x[:,1],xdotmu[:,1])
+ranks
