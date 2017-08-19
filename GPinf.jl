@@ -11,7 +11,7 @@ export Parset, GPparset,
 		simulate, interpolate,
 		construct_parsets, construct_ode, construct_ode_osc,
 		optimise_params!, optimise_models!, weight_models!,
-		weight_edges, get_true_ranks, get_best_id, edgesummary
+		weight_edges, get_true_ranks, get_best_id, edgesummary, metricdata
 
 
 mutable struct Parset
@@ -553,6 +553,33 @@ function edgesummary(edgeweights,trueparents)
 		end
 	end
 	truedges, othersum
+end
+
+
+function metricdata(edgeweights,trueparents)
+	truth = Vector{Bool}(0)
+	indx = 0
+	if size(edgeweights,1) == length(trueparents)^2
+		for i in 1:size(edgeweights,1)
+			if edgeweights[i,2] in trueparents[convert(Int,edgeweights[i,1])].parents
+				push!(truth,true)
+			else
+				push!(truth,false)
+			end
+		end
+	else
+		indx = 1
+		for i in 1:size(edgeweights,1)
+			thispset = trueparents[convert(Int,edgeweights[i,1])]
+			if edgeweights[i,2] in thispset.parents &&
+					[edgeweights[i,3]] == thispset.intertype[find(thispset.parents .== edgeweights[i,2])]
+				push!(truth,true)
+			else
+				push!(truth,false)
+			end
+		end
+	end
+	truth, edgeweights[:,[3+indx,4+indx]]
 end
 
 

@@ -2,24 +2,28 @@ push!(LOAD_PATH, "/cluster/home/ld2113/work/Final-Project/")
 push!(LOAD_PATH, "/media/leander/Daten/Data/Imperial/Projects/Final Project/Final-Project")
 
 using GPinf
+import ScikitLearn
+ScikitLearn.@sk_import metrics: (average_precision_score, precision_recall_curve,
+									roc_auc_score, roc_curve)
+
 
 
 osc = false
 tspan = (0.0,20.0)
 δt = 1.0
-σ = 0.0
+σ = 0.1
 
 maxinter = 2
 slfint = false
 gpsbt = true
 
-interactions = [:Activation, :Repression]
-# interactions = nothing
+# interactions = [:Activation, :Repression]
+interactions = nothing
 
 gpnum = 5
 # gpnum = nothing
 
-rmfl = false
+rmfl = true
 
 @show osc; @show tspan; @show δt; @show σ; @show maxinter; @show slfint
 @show gpsbt; @show interactions; @show gpnum; @show rmfl
@@ -94,4 +98,11 @@ bestmodels = get_best_id(parsets)
 
 truedges, othersum = edgesummary(edgeweights,trueparents)
 
-ranks
+truth, scrs = metricdata(edgeweights,trueparents)
+
+println(average_precision_score(truth, scrs[:,1]))
+println(roc_auc_score(truth, scrs[:,1]))
+prcurve = precision_recall_curve(truth, scrs[:,1])[1:2]
+roccurve = roc_curve(truth, scrs[:,1])[1:2]
+PyPlot.plot(prcurve[2],prcurve[1])
+PyPlot.plot(roccurve[1],roccurve[2])
