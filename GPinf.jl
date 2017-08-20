@@ -116,7 +116,7 @@ function interpolate(x, y, rmfl::Bool, gpnum::Int)
 		# m[:ICM][:rbf]["lengthscale"][:constrain_bounded](0.0,5.0)
 		# m[:mixed_noise][:constrain_fixed](0.1)
 
-		m[:optimize_restarts](num_restarts = 8, verbose=false, parallel=true)
+		m[:optimize_restarts](num_restarts = 16, verbose=false, parallel=true)
 
 		# println(m[:param_array])
 
@@ -148,7 +148,7 @@ function interpolate(x, y, rmfl::Bool, gpnum::Int)
 end
 
 
-function construct_parsets(numspecies, maxinter, interactions::AbstractArray; selfinter=false, gpsubtract=true)
+function construct_parsets(numspec\item Adaptive Gaussian processes - Too slow (R package), used constrained optimisation for GPs instead.ies, maxinter, interactions::AbstractArray; selfinter=false, gpsubtract=true)
 	allparents = collect(1:numspecies)
 	parsets::Array{Parset,1} = []
 	count::Int = 0
