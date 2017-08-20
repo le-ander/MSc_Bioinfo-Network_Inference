@@ -148,7 +148,7 @@ function interpolate(x, y, rmfl::Bool, gpnum::Int)
 end
 
 
-function construct_parsets(numspec\item Adaptive Gaussian processes - Too slow (R package), used constrained optimisation for GPs instead.ies, maxinter, interactions::AbstractArray; selfinter=false, gpsubtract=true)
+function construct_parsets(numspecies, maxinter, interactions::AbstractArray; selfinter=false, gpsubtract=true)
 	allparents = collect(1:numspecies)
 	parsets::Array{Parset,1} = []
 	count::Int = 0
