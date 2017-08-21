@@ -1,7 +1,7 @@
 module GPinf
 
 using Juno
-import DifferentialEquations, PyCall, PyPlot, Distributions, Optim, Combinatorics
+import DifferentialEquations, PyCall, PyPlot, Distributions, Optim, Combinatorics, NetworkInference
 
 PyCall.@pyimport GPy.kern as gkern
 PyCall.@pyimport GPy.models as gmodels
@@ -381,30 +381,46 @@ function weight_models!(parsets)
 end
 
 
-function weight_edges(parsets::Array{Parset,2}, interactions::AbstractArray)
+function weight_edges(parsets::Array{Parset,2}, suminter, interactions::AbstractArray)
 	# Create edgeweight array with columns:
 	# Target, Source, Interaction, Weight
+	if suminter
+		numsp = size(parsets,2)
+		edgeweights = hcat(repeat(collect(1:numsp),inner=numsp),
+							repeat(collect(1:numsp),outer=numsp),
+							zeros(numsp^2),
+							zeros(numsp^2))
 
-	numsp = size(parsets,2)
-	numint = length(interactions)
-	interdict = map(reverse, Dict(enumerate(interactions)))
-	edgeweights = hcat(repeat(collect(1:numsp),inner=numsp*numint),
-						repeat(collect(1:numsp),outer=numsp,inner=numint),
-						repeat(interactions,outer=numsp^2),
-						zeros(numint*numsp^2),
-						zeros(numint*numsp^2))
+		for parset in parsets
+			for (i, parent) in enumerate(parset.parents)
+				row = (parset.speciesnum - 1) * numsp + (parent-1) + 1
+				edgeweights[row,3] += parset.aicweight
+				edgeweights[row,4] += parset.bicweight
+			end
+		end
 
-	for parset in parsets
-		for (i, parent) in enumerate(parset.parents)
-			row = (parset.speciesnum - 1) * numsp * numint + (parent-1) * numint + interdict[parset.intertype[i]]
-			edgeweights[row,4] += parset.aicweight
-			edgeweights[row,5] += parset.bicweight
+	else
+		numsp = size(parsets,2)
+		numint = length(interactions)
+		interdict = map(reverse, Dict(enumerate(interactions)))
+		edgeweights = hcat(repeat(collect(1:numsp),inner=numsp*numint),
+							repeat(collect(1:numsp),outer=numsp,inner=numint),
+							repeat(interactions,outer=numsp^2),
+							zeros(numint*numsp^2),
+							zeros(numint*numsp^2))
+
+		for parset in parsets
+			for (i, parent) in enumerate(parset.parents)
+				row = (parset.speciesnum - 1) * numsp * numint + (parent-1) * numint + interdict[parset.intertype[i]]
+				edgeweights[row,4] += parset.aicweight
+				edgeweights[row,5] += parset.bicweight
+			end
 		end
 	end
 	edgeweights
 end
 
-function weight_edges(parsets::Array{GPparset,2}, interactions::Void)
+function weight_edges(parsets::Array{GPparset,2}, suminter, interactions::Void)
 	# Create edgeweight array with columns:
 	# Target, Source, Weight
 
@@ -425,10 +441,12 @@ function weight_edges(parsets::Array{GPparset,2}, interactions::Void)
 end
 
 
-function get_true_ranks(trueparents, parsets::Array{Parset,2})
+function get_true_ranks(trueparents, parsets::Array{Parset,2}, suminter)
 	# Create ranks array with columns representing each specie and rows:
 	# Specie Number, ID, Distance, AIC, BIC, Distrank, AICrank, BICrank, AICweight, BICweight
-
+	if suminter
+		warn("Summed interactions (Activ. + Repr.) are not taken into account during ranking.")
+	end
 	ranks = []
 	for tp in trueparents
 		for parset in parsets[:, tp.speciesnum]
@@ -450,7 +468,7 @@ function get_true_ranks(trueparents, parsets::Array{Parset,2})
 	ranks
 end
 
-function get_true_ranks(trueparents, parsets::Array{GPparset,2})
+function get_true_ranks(trueparents, parsets::Array{GPparset,2}, suminter)
 	# Create ranks array with columns representing each specie and rows:
 	# Specie Number, ID, Log_likelihood, AIC, BIC, Likrank, AICrank, BICrank, AICweight, BICweight
 
@@ -476,10 +494,12 @@ function get_true_ranks(trueparents, parsets::Array{GPparset,2})
 end
 
 
-function get_best_id(parsets::Array{Parset,2})
+function get_best_id(parsets::Array{Parset,2}, suminter)
 	# Create array with top scoring models. Columns representing each specie and rows:
 	# Specie Number, ID of min dist mod, ID of min aic mod, ID of min bic mod, Dist of min dist mod, AIC of min aic mod, BIC of min bic mod
-
+	if suminter
+		warn("Summed interactions (Activ. + Repr.) are not taken into account during ranking.")
+	end
 	bestlist = []
 	for j = 1:size(parsets,2)
 		row = find([i.dist for i in parsets[:,j]] .== minimum(i.dist for i in parsets[:,j]))[1]
@@ -497,7 +517,7 @@ function get_best_id(parsets::Array{Parset,2})
 	bestlist
 end
 
-function get_best_id(parsets::Array{GPparset,2})
+function get_best_id(parsets::Array{GPparset,2}, suminter)
 	# Create array with top scoring models. Columns representing each specie and rows:
 	# Specie Number, ID of max log_lik mod, ID of min aic mod, ID of min bic mod, Log_lik of max log_lik mod, AIC of min aic mod, BIC of min bic mod
 
@@ -580,6 +600,29 @@ function metricdata(edgeweights,trueparents)
 		end
 	end
 	truth, edgeweights[:,[3+indx,4+indx]]
+end
+
+
+function networkinference(y)
+	number_of_genes = size(y, 2)
+	genes = Array{NetworkInference.Gene}(number_of_genes)
+	labels = collect(1:number_of_genes)'
+	data = vcat(labels,y)
+
+	for i in 1:number_of_genes
+		genes[i] = NetworkInference.Gene(data[:,i], "bayesian_blocks", "maximum_likelihood", 10)
+	end
+
+	network_analysis = NetworkInference.NetworkAnalysis(NetworkInference.PIDCNetworkInference(), genes)
+
+	output = Array{Any}(length(network_analysis.edges),3)
+
+	for (i,edge) in enumerate(network_analysis.edges)
+		output[i,1] = edge.genes[1].name
+		output[i,2] = edge.genes[2].name
+		output[i,3] = edge.confidence
+	end
+	output
 end
 
 
