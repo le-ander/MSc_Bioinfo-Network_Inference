@@ -41,7 +41,7 @@ mutable struct GPparset
 end
 
 
-function simulate(odesys, tspan, step; noise=0.0)
+function simulate(odesys, sdesys, numspecies, tspan, step, noise::Float64)
 	u0 = [1.0;0.5;1.0;0.5;0.5] # Define initial conditions
 	prob = DifferentialEquations.ODEProblem(odesys,u0,tspan) # Formalise ODE problem
 
@@ -51,6 +51,19 @@ function simulate(odesys, tspan, step; noise=0.0)
 	if noise ≠ 0.0
 		y .+= reshape(rand(Distributions.Normal(0, noise), length(y)), size(y))
 	end
+	x, y
+end
+
+function simulate(odesys, sdesys, numspecies, tspan, step, noise::Symbol)
+	A = hcat(eye(numspecies),-eye(numspecies))
+	sparse(A)
+
+	u0 = [1.0;0.5;1.0;0.5;0.5] # Define initial conditions
+
+	prob = DifferentialEquations.SDEProblem(odesys,sdesys,u0,tspan,noise_rate_prototype=A)
+	sol = DifferentialEquations.solve(prob, dt=0.001, saveat=step)
+	x = reshape(sol.t,(length(sol.t),1))
+	y = hcat(sol.u...)'
 	x, y
 end
 
