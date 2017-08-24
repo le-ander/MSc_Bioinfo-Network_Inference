@@ -7,11 +7,11 @@ PyCall.@pyimport GPy.kern as gkern
 PyCall.@pyimport GPy.models as gmodels
 PyCall.@pyimport GPy.util.multioutput as gmulti
 
-export Parset, GPparset,
-		simulate, interpolate,
-		construct_parsets, construct_ode, construct_ode_osc,
-		optimise_params!, optimise_models!, weight_models!,
-		weight_edges, get_true_ranks, get_best_id, edgesummary, metricdata
+export Parset, GPparset, TParset,
+		datasettings, simulate, interpolate,
+		construct_parsets, optimise_models!, weight_models!,
+		weight_edges, get_true_ranks, get_best_id, edgesummary, metricdata,
+		networkinference
 
 
 mutable struct Parset
@@ -33,11 +33,237 @@ mutable struct GPparset
 	speciesnum::Int
 	intercount::Int
 	parents::Array{Int, 1}
+	params::Array{Float64, 1}
 	lik::Float64
 	modaic::Float64
 	modbic::Float64
 	aicweight::Float64
 	bicweight::Float64
+end
+
+struct TParset
+	speciesnum::Int
+	intercount::Int
+	parents::Array{Int, 1}
+	intertype::Array{Symbol,1}
+end
+
+
+function datasettings(srcset::Symbol, interclass, usefix)
+	function oscodesys(t,u,du)
+		du[1] = 0.2 - 0.9*u[1] + 2.0*((u[5]^5.0)/(1.5^5.0+u[5]^5.0))
+		du[2] = 0.2 - 0.9*u[2] + 2.0*((u[1]^5.0)/(1.5^5.0+u[1]^5.0))
+		du[3] = 0.2 - 0.7*u[3] + 2.0*((u[1]^5.0)/(1.5^5.0+u[1]^5.0))
+		du[4] = 0.2 - 1.5*u[4] + 2.0*((u[1]^5.0)/(1.5^5.0+u[1]^5.0)) + 2.0*(1.0/(1.0+(u[3]/1.5)^5.0))
+		du[5] = 0.2 - 1.5*u[5] + 2.0*((u[4]^5.0)/(1.5^5.0+u[4]^5.0)) + 2.0*(1.0/(1.0+(u[2]/1.5)^3.0))
+	end
+	function oscsdesys(t, u, du)
+		du[1,1] = √(0.2 + 2.0*((u[5]^5.0)/(1.5^5.0+u[5]^5.0))); du[1,6] = -√(0.9*u[1]);
+		du[2,2] = √(0.2 + 2.0*((u[1]^5.0)/(1.5^5.0+u[1]^5.0))); du[2,7] = -√(0.9*u[2]);
+		du[3,3] = √(0.2 + 2.0*((u[1]^5.0)/(1.5^5.0+u[1]^5.0))); du[3,8] = -√(0.7*u[3]);
+		du[4,4] = √(0.2 + 2.0*((u[1]^5.0)/(1.5^5.0+u[1]^5.0)) + 2.0*(1.0/(1.0+(u[3]/1.5)^5.0))); du[4,9] = -√(1.5*u[4]);
+		du[5,5] = √(0.2 + 2.0*((u[4]^5.0)/(1.5^5.0+u[4]^5.0)) + 2.0*(1.0/(1.0+(u[2]/1.5)^3.0))); du[5,10] = -√(1.5*u[5]);
+	end
+	function linodesys(t,u,du)
+		du[1] = 0.1-0.4*u[1]+2.0*((u[5]^2.0)/(1.5^2.0+u[5]^2.0))
+		du[2] = 0.2-0.4*u[2]+1.5*((u[1]^2.0)/(1.5^2.0+u[1]^2.0))*(1.0/(1.0+(u[5]/2.0)^1.0))
+		du[3] = 0.2-0.4*u[3]+2.0*((u[1]^2.0)/(1.5^2.0+u[1]^2.0))
+		du[4] = 0.4-0.1*u[4]+1.5*((u[1]^2.0)/(1.5^2.0+u[1]^2.0))*(1.0/(1.0+(u[3]/1.0)^2.0))
+		du[5] = 0.3-0.3*u[5]+2.0*((u[4]^2.0)/(1.0^2.0+u[4]^2.0))*(1.0/(1.0+(u[2]/0.5)^3.0))
+	end
+	function linsdesys(t, u, du)
+		du[1,1] = √(0.1 + 2.0*((u[5]^2.0)/(1.5^2.0+u[5]^2.0))); du[1,6] = -√(0.4*u[1]);
+		du[2,2] = √(0.2 + 1.5*((u[1]^2.0)/(1.5^2.0+u[1]^2.0))*(1.0/(1.0+(u[5]/2.0)^1.0))); du[2,7] = -√(0.4*u[2]);
+		du[3,3] = √(0.2 + 2.0*((u[1]^2.0)/(1.5^2.0+u[1]^2.0))); du[3,8] = -√(0.4*u[3]);
+		du[4,4] = √(0.4 + 1.5*((u[1]^2.0)/(1.5^2.0+u[1]^2.0))*(1.0/(1.0+(u[3]/1.0)^2.0))); du[4,9] = -√(0.1*u[4]);
+		du[5,5] = √(0.3 + 2.0*((u[4]^2.0)/(1.0^2.0+u[4]^2.0))*(1.0/(1.0+(u[2]/0.5)^3.0))); du[5,10] = -√(0.3*u[5]);
+	end
+	if srcset == :osc
+		if usefix
+			fixparm = [0.2 0.2 0.2 0.2 0.2; 0.9 0.9 0.7 1.5 1.5]
+			if interclass == :mult
+				initp = [1.0]
+				lowerb = [0.5]
+				upperb = [4.0]
+				repinit = [1.0,1.0]
+				replow = [0.7,0.2]
+				rephigh = [5.0,3.0]
+			elseif interclass == :add
+				initp = []
+				lowerb = []
+				upperb = []
+				repinit = [1.0,1.0,1.0]
+				replow = [0.5,0.7,0.2]
+				rephigh = [4.0,5.0,3.0]
+			else
+				initp = []
+				lowerb = []
+				upperb = []
+				repinit = []
+				replow = []
+				rephigh = []
+			end
+		else
+			fixparm = []
+			if interclass == :mult
+				initp =  [0.5,1.0,1.0]
+				lowerb = [0.1,0.5,0.5]
+				upperb = [2.0,2.0,4.0]
+				repinit = [1.0,1.0]
+				replow = [0.7,0.2]
+				rephigh = [5.0,3.0]
+			elseif interclass == :add
+				initp =  [0.5,1.0]
+				lowerb = [0.1,0.5]
+				upperb = [2.0,2.0]
+				repinit = [1.0,1.0,1.0]
+				replow = [0.5,0.7,0.2]
+				rephigh = [4.0,5.0,3.0]
+			else
+				initp = []
+				lowerb = []
+				upperb = []
+				repinit = []
+				replow = []
+				rephigh = []
+			end
+		end
+
+		if interclass == nothing
+			trueparents = [TParset(1, 2, [1, 5], [:Activation]),
+							TParset(2, 2, [2, 1], [:Activation]),
+							TParset(3, 2, [3, 1], [:Activation]),
+							TParset(4, 3, [4, 1, 3], [:Activation, :Repression]),
+							TParset(5, 3, [5, 2, 4], [:Repression, :Activation])]
+		else
+			trueparents = [TParset(1, 1, [5], [:Activation]),
+							TParset(2, 1, [1], [:Activation]),
+							TParset(3, 1, [1], [:Activation]),
+							TParset(4, 2, [1, 3], [:Activation, :Repression]),
+							TParset(5, 2, [2, 4], [:Repression, :Activation])]
+		end
+
+	elseif srcset == :lin
+		if usefix
+			fixparm = [0.1 0.2 0.2 0.4 0.3; 0.4 0.4 0.4 0.1 0.3]
+			if interclass == :mult
+				initp = [1.0]
+				lowerb = [0.0]
+				upperb = [5.0]
+				repinit = [2.0,1.0]
+				replow = [0.1,0.0]
+				rephigh = [5.0,4.0]
+			elseif interclass == :add
+				initp = []
+				lowerb = []
+				upperb = []
+				repinit = [1.0,2.0,1.0]
+				replow = [0.0,0.1,0.0]
+				rephigh = [5.0,5.0,4.0]
+			else
+				initp = []
+				lowerb = []
+				upperb = []
+				repinit = []
+				replow = []
+				rephigh = []
+			end
+		else
+			fixparm = []
+			if interclass == :mult
+				initp =  [0.5,1.0,1.0]
+				lowerb = [0.1,0.5,0.0]
+				upperb = [2.0,2.0,5.0]
+				repinit = [2.0,1.0]
+				replow = [0.1,0.0]
+				rephigh = [5.0,4.0]
+			elseif interclass == :add
+				initp =  [0.5,1.0]
+				lowerb = [0.1,0.5]
+				upperb = [2.0,2.0]
+				repinit = [1.0,2.0,1.0]
+				replow = [0.0,0.1,0.0]
+				rephigh = [5.0,5.0,4.0]
+			else
+				initp = []
+				lowerb = []
+				upperb = []
+				repinit = []
+				replow = []
+				rephigh = []
+			end
+		end
+
+		if interclass == nothing
+			trueparents = [TParset(1, 2, [1, 5], [:Activation]),
+							TParset(2, 3, [2, 1, 5], [:Activation, :Repression]),
+							TParset(3, 2, [3, 1], [:Activation]),
+							TParset(4, 3, [4, 1, 3], [:Activation, :Repression]),
+							TParset(5, 3, [5, 2, 4], [:Repression, :Activation])]
+		else
+			trueparents = [TParset(1, 1, [5], [:Activation]),
+							TParset(2, 2, [1, 5], [:Activation, :Repression]),
+							TParset(3, 1, [1], [:Activation]),
+							TParset(4, 2, [1, 3], [:Activation, :Repression]),
+							TParset(5, 2, [2, 4], [:Repression, :Activation])]
+		end
+
+	elseif srcset == :gnw
+		fixparm = []
+		if interclass == :mult
+			initp =  [0.5,1.0,1.0]
+			lowerb = [0.1,0.5,0.0]
+			upperb = [2.0,2.0,5.0]
+			repinit = [2.0,1.0]
+			replow = [0.1,0.0]
+			rephigh = [5.0,4.0]
+		elseif interclass == :add
+			initp =  [0.5,1.0]
+			lowerb = [0.1,0.5]
+			upperb = [2.0,2.0]
+			repinit = [1.0,2.0,1.0]
+			replow = [0.0,0.1,0.0]
+			rephigh = [5.0,5.0,4.0]
+		else
+			initp = []
+			lowerb = []
+			upperb = []
+			repinit = []
+			replow = []
+			rephigh = []
+		end
+
+		if interclass == nothing
+			trueparents = [TParset(1, 2, [1, 3], [:Repression]),
+							TParset(2, 2, [2, 1], [:Repression]),
+							TParset(3, 1, [3], []),
+							TParset(4, 2, [4, 6], [:Repression, :Repression]),
+							TParset(5, 3, [5, 1, 3], [:Activation, :Repression]),
+							TParset(6, 1, [6], []),
+							TParset(7, 3, [7, 5, 10], [:Repression, :Repression]),
+							TParset(8, 2, [8, 7], [:Repression]),
+							TParset(9, 2, [9, 4], [:Repression]),
+							TParset(10, 1, [10], [])]
+		else
+			trueparents = [TParset(1, 1, [3], [:Repression]),
+							TParset(2, 1, [1], [:Repression]),
+							TParset(3, 0, [], []),
+							TParset(4, 2, [1, 6], [:Repression, :Repression]),
+							TParset(5, 2, [1, 3], [:Activation, :Repression]),
+							TParset(6, 0, [], []),
+							TParset(7, 2, [5, 10], [:Repression, :Repression]),
+							TParset(8, 1, [7], [:Repression]),
+							TParset(9, 1, [4], [:Repression]),
+							TParset(10, 0, [], [])]
+		end
+	end
+	if srcset == :osc
+		return oscodesys, oscsdesys, fixparm, trueparents, hcat(initp, lowerb, upperb), hcat(repinit, replow, rephigh)
+	elseif srcset == :lin
+		return linodesys, linsdesys, fixparm, trueparents, hcat(initp, lowerb, upperb), hcat(repinit, replow, rephigh)
+	elseif srcset == :gnw
+		return nothing, nothing, fixparm, trueparents, hcat(initp, lowerb, upperb), hcat(repinit, replow, rephigh)
+	end
 end
 
 
@@ -131,7 +357,7 @@ function interpolate(x, y, rmfl::Bool, gpnum::Int)
 
 		m[:optimize_restarts](num_restarts = 16, verbose=false, parallel=true)
 
-		# println(m[:param_array])
+		println(m[:param_array])
 
 		for (i,species) in enumerate(comb)
 			count[species] += 1
@@ -157,15 +383,34 @@ function interpolate(x, y, rmfl::Bool, gpnum::Int)
 		x = x[2:end-1,:]
 	end
 	x, xmu, xvar, xdotmu, nothing
-
 end
 
 
-function construct_parsets(numspecies, maxinter, interactions::AbstractArray; selfinter=false, gpsubtract=true)
+function construct_parsets(numspecies, maxinter, fixparm, interclass::Symbol)
 	allparents = collect(1:numspecies)
 	parsets::Array{Parset,1} = []
 	count::Int = 0
+	interactions = [:Activation, :Repression]
 
+	for i = 1:numspecies
+		count += 1
+		push!(parsets, Parset(count, i, 0, [], [], [], 0.0, 0.0, 0.0, 0.0, 0.0))
+	end
+
+	for i = 1:numspecies
+		for k = 1:maxinter
+			for l in Combinatorics.combinations(filter(e -> e ≠ i, allparents), k)
+				for m in Iterators.product(Iterators.repeated(interactions,k)...)
+					count += 1
+					push!(parsets, Parset(count, i, k, l, collect(m), [], 0.0, 0.0, 0.0, 0.0, 0.0))
+				end
+			end
+		end
+	end
+
+	return reshape(parsets,(:,numspecies))
+
+	"""
 	if selfinter
 		for i = 1:numspecies
 			for k = 1:maxinter
@@ -181,25 +426,29 @@ function construct_parsets(numspecies, maxinter, interactions::AbstractArray; se
 			end
 		end
 	else
-		for i = 1:numspecies
-			for k = 1:maxinter
-				for l in Combinatorics.combinations(filter(e -> e ≠ i, allparents), k)
-					for m in Iterators.product(Iterators.repeated(interactions,k)...)
-						count += 1
-						push!(parsets, Parset(count, i, k, l, collect(m), [], 0.0, 0.0, 0.0, 0.0, 0.0))
-					end
-				end
-			end
-		end
+
 	end
-	reshape(parsets,(:,numspecies))
+	"""
 end
 
-function construct_parsets(numspecies, maxinter, interactions::Void; selfinter=false, gpsubtract=true)
+function construct_parsets(numspecies, maxinter, fixparm, interclass::Void)
 	allparents = collect(1:numspecies)
 	gpparsets::Array{GPparset,1} = []
 	count::Int = 0
 
+	for i = 1:numspecies
+		for k = 0:maxinter
+			for l in Combinatorics.combinations(filter(e -> e ≠ i, allparents), k)
+				count += 1
+				parents = [i;l]
+				push!(gpparsets, GPparset(count, i, k+1, parents, [], 0.0, 0.0, 0.0, 0.0, 0.0))
+			end
+		end
+	end
+
+	return reshape(gpparsets,(:,numspecies))
+
+	"""
 	if selfinter && gpsubtract
 		for i = 1:numspecies
 			for k = 1:maxinter
@@ -213,125 +462,119 @@ function construct_parsets(numspecies, maxinter, interactions::Void; selfinter=f
 			end
 		end
 	elseif !selfinter && gpsubtract
-		for i = 1:numspecies
+		for i = 0:numspecies
 			for k = 1:maxinter
 				for l in Combinatorics.combinations(filter(e -> e ≠ i, allparents), k)
 					count += 1
-					push!(gpparsets, GPparset(count, i, k, l, 0.0, 0.0, 0.0, 0.0, 0.0))
+					push!(gpparsets, GPparset(count, i, k, l, [], 0.0, 0.0, 0.0, 0.0, 0.0))
 				end
 			end
 		end
 	elseif selfinter && !gpsubtract
-		for i = 1:numspecies
-			for k = 1:maxinter
-				for l in Combinatorics.combinations(filter(e -> e ≠ i, allparents), k)
-					count += 1
-					parents = [i;l]
-					push!(gpparsets, GPparset(count, i, k+1, parents, 0.0, 0.0, 0.0, 0.0, 0.0))
-				end
-			end
-		end
+		...
 	else
 		error("Invalid combination of selfinter and gpsubtract keywords.")
 	end
-	reshape(gpparsets,(:,numspecies))
+	"""
 end
 
 
-function construct_ode(topology, fixparm, xmu, xdotmu)
-	initp::Array{Float64,1} = [1.0]
-	lowerb::Array{Float64,1} = [0.0]
-	upperb::Array{Float64,1} = [5.0]
+function construct_ode(topology, fixparm, xmu, xdotmu, interclass)
+	numspecies = size(xmu,2)
+	if interclass == :mult
+		function multodefunc(p)
+			if fixparm != []
+				basis = fixparm[1,topology.speciesnum] .- fixparm[2,topology.speciesnum] .* xmu[:,topology.speciesnum]
+				it = 0
+			else
+				basis = p[1] .- p[2] .* xmu[:,topology.speciesnum]
+				it = 2
+			end
 
-	for parent in enumerate(topology.parents)
-		push!(initp,2.0,1.0)
-		push!(lowerb,0.1,0.0)
-		push!(upperb,5.0,4.0)
-	end
+			if topology.intercount == 0
+				return sum((basis .- xdotmu[:,topology.speciesnum]) .^ 2.0)
+			end
 
-	function odefunc(p)
-		# !This function does not work for species without parents!
-		basis = fixparm[1,topology.speciesnum] .- fixparm[2,topology.speciesnum] .* xmu[:,topology.speciesnum]
-		fact = ones(Float64, size(xmu,1))
-		frepr = ones(Float64, size(xmu,1))
-		it::Int = 0
+			fact = ones(Float64, size(xmu,1))
+			frepr = ones(Float64, size(xmu,1))
 
-		for parent in enumerate(topology.parents)
-			if topology.intertype[parent[1]] == :Activation
-				if it == 0
-					fact -= ones(Float64, size(xmu,1))
+			for parent in enumerate(topology.parents)
+				if topology.intertype[parent[1]] == :Activation
+					if it == 0
+						fact -= ones(Float64, size(xmu,1))
+					end
+					it += 2
+					fact += (xmu[:,parent[2]] .^ p[it]) ./ (p[it+1] ^ p[it] + xmu[:,parent[2]] .^ p[it])
 				end
-				it += 2
-				fact += (xmu[:,parent[2]] .^ p[it]) ./ (p[it+1] ^ p[it] + xmu[:,parent[2]] .^ p[it])
 			end
-		end
 
-		for parent in enumerate(topology.parents)
-			if topology.intertype[parent[1]] == :Repression
-				it += 2
-				frepr .*= (1.0 ./ (1.0 .+ (xmu[:,parent[2]] ./ p[it+1]) .^ p[it]))
+			for parent in enumerate(topology.parents)
+				if topology.intertype[parent[1]] == :Repression
+					it += 2
+					frepr .*= (1.0 ./ (1.0 .+ (xmu[:,parent[2]] ./ p[it+1]) .^ p[it]))
+				end
 			end
-		end
 
-		sum(((basis .+ p[1] .* fact .* frepr ) - xdotmu[:,topology.speciesnum]) .^ 2.0)
+			sum(((basis .+ p[1] .* fact .* frepr ) .- xdotmu[:,topology.speciesnum]) .^ 2.0)
+		end
+		return multodefunc
+	elseif interclass == :add
+		function addodefunc(p)
+			if fixparm != []
+				basis = fixparm[1,topology.speciesnum] .- fixparm[2,topology.speciesnum] .* xmu[:,topology.speciesnum]
+				it = 1
+			else
+				basis = p[1] .- p[2] .* xmu[:,topology.speciesnum]
+				it = 3
+			end
+
+			if topology.intercount == 0
+				return sum((basis .- xdotmu[:,topology.speciesnum]) .^ 2.0)
+			end
+
+			fact = zeros(Float64, size(xmu,1))
+			frepr = zeros(Float64, size(xmu,1))
+
+			for parent in enumerate(topology.parents)
+				if topology.intertype[parent[1]] == :Activation
+					fact += p[it] .* (xmu[:,parent[2]] .^ p[it+1]) ./ (p[it+2] ^ p[it+1] + xmu[:,parent[2]] .^ p[it+1])
+					it += 3
+				end
+			end
+
+			for parent in enumerate(topology.parents)
+				if topology.intertype[parent[1]] == :Repression
+					frepr .+= p[it] .* (1.0 ./ (1.0 .+ (xmu[:,parent[2]] ./ p[it+2]) .^ p[it+1]))
+					it += 3
+				end
+			end
+
+			sum(((basis .+ fact .+ frepr ) .- xdotmu[:,topology.speciesnum]) .^ 2.0)
+		end
+		return multodefunc
 	end
-
-	odefunc, initp, lowerb, upperb
-end
-
-function construct_ode_osc(topology, fixparm, xmu, xdotmu)
-	initp::Array{Float64,1} = []
-	lowerb::Array{Float64,1} = []
-	upperb::Array{Float64,1} = []
-
-	for parent in enumerate(topology.parents)
-		push!(initp,1.0,1.0,1.0)
-		# push!(initp,rand(Distributions.Uniform(0.5,4.0), 1), rand(Distributions.Uniform(0.7,5.0), 1), rand(Distributions.Uniform(0.2,3.0), 1))
-		push!(lowerb,0.5,0.7,0.2)
-		push!(upperb,4.0,5.0,3.0)
-	end
-
-	function odefunc(p)
-		# !This function does not work for species without parents!
-		basis = fixparm[1,topology.speciesnum] .- fixparm[2,topology.speciesnum] .* xmu[:,topology.speciesnum]
-		fact = zeros(Float64, size(xmu,1))
-		frepr = zeros(Float64, size(xmu,1))
-		it::Int = 1
-
-		for parent in enumerate(topology.parents)
-			if topology.intertype[parent[1]] == :Activation
-				fact += p[it] .* (xmu[:,parent[2]] .^ p[it+1]) ./ (p[it+2] ^ p[it+1] + xmu[:,parent[2]] .^ p[it+1])
-				it += 3
-			end
-		end
-
-		for parent in enumerate(topology.parents)
-			if topology.intertype[parent[1]] == :Repression
-				frepr .+= p[it] .* (1.0 ./ (1.0 .+ (xmu[:,parent[2]] ./ p[it+2]) .^ p[it+1]))
-				it += 3
-			end
-		end
-
-		sum(((basis .+ fact .+ frepr ) - xdotmu[:,topology.speciesnum]) .^ 2.0)
-	end
-
-	odefunc, initp, lowerb, upperb
 end
 
 
-function optimise_params!(topology::Parset, fixparm, xmu, xdotmu, osc)
-	if osc
-		f, initial, lower, upper = construct_ode_osc(topology, fixparm, xmu, xdotmu)
-	else
-		f, initial, lower, upper = construct_ode(topology, fixparm, xmu, xdotmu)
-	end
-
-	results = Optim.optimize(f, initial, lower, upper, Optim.Fminbox{Optim.NelderMead}())
+function optimise_params!(topology::Parset, fixparm, xmu, xdotmu, interclass, initial, lower, upper, prmrep)
+	f = construct_ode(topology, fixparm, xmu, xdotmu, interclass)
 	n = size(xmu,1)
-	topology.params = results.minimizer
-	topology.modaic = n * log(results.minimum / n) + 2 * length(results.minimizer)
-	topology.modbic = n * log(results.minimum / n) + log(n)*length(results.minimizer)
-	topology.dist = results.minimum
+	if topology.intercount == 0
+		topology.dist = f([])
+		topology.modaic = n * log(topology.dist / n) + 2 * 0
+		topology.modbic = n * log(topology.dist / n) + log(n) * 0
+	else
+		for parent in topology.parents
+			initial = vcat(initial,prmrep[:,1])
+			lower = vcat(lower,prmrep[:,2])
+			upper = vcat(upper,prmrep[:,3])
+		end
+		results = Optim.optimize(f, initial[:], lower[:], upper[:], Optim.Fminbox{Optim.NelderMead}())
+		topology.params = results.minimizer
+		topology.modaic = n * log(results.minimum / n) + 2 * length(results.minimizer)
+		topology.modbic = n * log(results.minimum / n) + log(n)*length(results.minimizer)
+		topology.dist = results.minimum
+	end
 end
 
 function optimise_params!(gppar::GPparset, x, y)
@@ -339,16 +582,20 @@ function optimise_params!(gppar::GPparset, x, y)
 	m = gmodels.GPRegression(x,y,kernel)
 	m[:optimize_restarts](num_restarts = 5, verbose=false)
 	# m[:plot](plot_density=false)
+	gppar.params = m[:param_array]
 	gppar.lik = m[:log_likelihood]()
 	gppar.modaic =  2 * gppar.intercount - 2 * gppar.lik
 	gppar.modbic = log(size(y)[1]) * gppar.intercount - 2 * gppar.lik
 end
 
 
-function optimise_models!(parsets::Array{Parset,2}, fixparm, xmu, xdotmu, osc; gpsubtract=true)
-	@progress "Optimising parameters" for par in parsets
+function optimise_models!(parsets::Array{Parset,2}, fixparm, xmu, xdotmu, interclass::Symbol, prmrng, prmrep)
+	initp = prmrng[:,1:1]
+	lowerb = prmrng[:,2:2]
+	upperb = prmrng[:,3:3]
+	@progress "Optimising ODEs" for par in parsets
 		try
-			optimise_params!(par,fixparm,xmu,xdotmu,osc)
+			optimise_params!(par, fixparm, xmu, xdotmu, interclass, initp, lowerb, upperb, prmrep)
 		catch err
 			if isa(err, DomainError)
 				warn("Could not complete optimisation of 1 model.")
@@ -362,20 +609,24 @@ function optimise_models!(parsets::Array{Parset,2}, fixparm, xmu, xdotmu, osc; g
 	end
 end
 
-function optimise_models!(parsets::Array{GPparset,2}, fixparm, xmu, xdotmu, osc; gpsubtract=true)
-	if gpsubtract
+function optimise_models!(parsets::Array{GPparset,2}, fixparm, xmu, xdotmu, interclass::Void, prmrng, prmrep)
+	@progress "Optimising GPs" for gppar in parsets
+		X = xmu[:,gppar.parents]
+		Y = reshape(xdotmu[:,gppar.speciesnum],(:,1))
+		optimise_params!(gppar,X,Y)
+	end
+	"""
+	if fixparm != []
 		@progress "Optimising GPs" for gppar in parsets
 			X = xmu[:,gppar.parents]
 			Y = reshape(xdotmu[:,gppar.speciesnum] - fixparm[1,gppar.speciesnum] + fixparm[2,gppar.speciesnum] .* xmu[:,gppar.speciesnum],(:,1))
 			optimise_params!(gppar,X,Y)
 		end
 	else
-		@progress "Optimising GPs" for gppar in parsets
-			X = xmu[:,gppar.parents]
-			Y = reshape(xdotmu[:,gppar.speciesnum],(:,1))
-			optimise_params!(gppar,X,Y)
-		end
+		...
 	end
+	"""
+	return
 end
 
 
@@ -394,9 +645,10 @@ function weight_models!(parsets)
 end
 
 
-function weight_edges(parsets::Array{Parset,2}, suminter, interactions::AbstractArray)
+function weight_edges(parsets::Array{Parset,2}, suminter, interclass::Symbol)
 	# Create edgeweight array with columns:
 	# Target, Source, Interaction, Weight
+	interactions = [:Activation, :Repression]
 	if suminter
 		numsp = size(parsets,2)
 		edgeweights = hcat(repeat(collect(1:numsp),inner=numsp),
@@ -433,7 +685,7 @@ function weight_edges(parsets::Array{Parset,2}, suminter, interactions::Abstract
 	edgeweights
 end
 
-function weight_edges(parsets::Array{GPparset,2}, suminter, interactions::Void)
+function weight_edges(parsets::Array{GPparset,2}, suminter, interclass::Void)
 	# Create edgeweight array with columns:
 	# Target, Source, Weight
 
