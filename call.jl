@@ -2,13 +2,12 @@ push!(LOAD_PATH, "/cluster/home/ld2113/work/Final-Project/")
 push!(LOAD_PATH, "/media/leander/Daten/Data/Imperial/Projects/Final Project/Final-Project")
 
 using GPinf
-import ScikitLearn
-ScikitLearn.@sk_import metrics: (average_precision_score, precision_recall_curve,
-									roc_auc_score, roc_curve)
+
 
 # Define source data
 numspecies = 5
-srcset = :osc # :lin :osc :gnw
+srcset = :lin # :lin :osc :gnw
+gnwpath = "/cluster/home/ld2113/work/data/thalia-simulated/InSilicoSize10-Yeast1_dream4_timeseries_one.tsv"
 
 # Simulate source data
 tspan = (0.0,20.0)
@@ -18,7 +17,7 @@ tspan = (0.0,20.0)
 # Define possible parent sets
 maxinter = 2
 interclass = nothing # :add :mult nothing
-usefix = true
+usefix = true	#ODEonly
 
 suminter = false	#ODEonly
 
@@ -33,7 +32,11 @@ rmfl = false
 
 odesys, sdesys, fixparm, trueparents, prmrng, prmrep = datasettings(srcset, interclass, usefix)
 
-x,y = simulate(odesys, sdesys, numspecies, tspan, δt, σ)
+if srcset == :gnw
+	x, y = readgenes(gnwpath)
+else
+	x, y = simulate(odesys, sdesys, numspecies, tspan, δt, σ)
+end
 
 xnew, xmu, xvar, xdotmu, xdotvar = interpolate(x, y, rmfl, gpnum)
 
@@ -51,13 +54,13 @@ bestmodels = get_best_id(parsets, suminter)
 
 truedges, othersum = edgesummary(edgeweights,trueparents)
 
-truth, scrs = metricdata(edgeweights,trueparents)
+aupr_aic, aupr_bic, auroc_aic, auroc_bic = performance(edgeweights,trueparents)
 
-println(average_precision_score(truth, scrs[:,1]))
-println(roc_auc_score(truth, scrs[:,1]))
-prcurve = precision_recall_curve(truth, scrs[:,1])[1:2]
-roccurve = roc_curve(truth, scrs[:,1])[1:2]
-PyPlot.plot(prcurve[2],prcurve[1])
-PyPlot.plot(roccurve[1],roccurve[2])
+println("AUPR AIC ", aupr_aic)
+println("AUPR BIC ", aupr_bic)
+println("AUROC AIC ", auroc_aic)
+println("AUROC BIC ", auroc_bic)
 
-networkinference(y)
+# output, thalia_aupr, thalia_auroc = networkinference(y, trueparents)
+# println("AUPR ", thalia_aupr)
+# println("AUROC ", thalia_auroc)

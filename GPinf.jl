@@ -1,7 +1,10 @@
 module GPinf
 
 using Juno
-import DifferentialEquations, PyCall, PyPlot, Distributions, Optim, Combinatorics, NetworkInference
+import DifferentialEquations, PyCall, PyPlot, Distributions, Optim, Combinatorics, NetworkInference, ScikitLearn
+
+ScikitLearn.@sk_import metrics: (average_precision_score, precision_recall_curve,
+									roc_auc_score, roc_curve)
 
 PyCall.@pyimport GPy.kern as gkern
 PyCall.@pyimport GPy.models as gmodels
@@ -10,7 +13,7 @@ PyCall.@pyimport GPy.util.multioutput as gmulti
 export Parset, GPparset, TParset,
 		datasettings, simulate, interpolate,
 		construct_parsets, optimise_models!, weight_models!,
-		weight_edges, get_true_ranks, get_best_id, edgesummary, metricdata,
+		weight_edges, get_true_ranks, get_best_id, edgesummary, performance,
 		networkinference
 
 
@@ -272,6 +275,13 @@ function datasettings(srcset::Symbol, interclass, usefix)
 	end
 end
 
+function readgenes(path::String)
+	xy = readdlm(open(path); skipstart = 1)
+	x = xy[:,1:1]
+	y = xy[:,2:end]
+	x, y
+end
+
 
 function simulate(odesys, sdesys, numspecies, tspan, step, noise::Float64)
 	u0 = [1.0;0.5;1.0;0.5;0.5] # Define initial conditions
@@ -317,7 +327,7 @@ function interpolate(x, y, rmfl::Bool, gpnum::Void)
 		# m[:Gaussian_noise]["variance"][:constrain_fixed](0.1)
 
 		m[:optimize_restarts](num_restarts = 5, verbose=false, parallel=false)
-		m[:plot](plot_density=false)
+		# m[:plot](plot_density=false)
 
 		# println(m[:param_array])
 
@@ -847,7 +857,7 @@ function edgesummary(edgeweights,trueparents)
 end
 
 
-function metricdata(edgeweights,trueparents)
+function performance(edgeweights,trueparents)
 	truth = Vector{Bool}(0)
 	indx = 0
 	if size(edgeweights,1) == length(trueparents)^2
@@ -870,11 +880,24 @@ function metricdata(edgeweights,trueparents)
 			end
 		end
 	end
-	truth, edgeweights[:,[3+indx,4+indx]]
+	scores = edgeweights[:,[3+indx,4+indx]]
+
+	# prcurve = precision_recall_curve(truth, scrs[:,1])[1:2]
+	# roccurve = roc_curve(truth, scrs[:,1])[1:2]
+	# PyPlot.plot(prcurve[2],prcurve[1])
+	# PyPlot.plot(roccurve[1],roccurve[2])
+
+	aupr_aic = average_precision_score(truth, scores[:,1])
+	aupr_bic = average_precision_score(truth, scores[:,2])
+	auroc_aic = roc_auc_score(truth, scores[:,1])
+	auroc_bic = roc_auc_score(truth, scores[:,2])
+
+	aupr_aic, aupr_bic, auroc_aic, auroc_bic
 end
 
 
-function networkinference(y)
+function networkinference(y, trueparents)
+	truth = Vector{Bool}(0)
 	number_of_genes = size(y, 2)
 	genes = Array{NetworkInference.Gene}(number_of_genes)
 	labels = collect(1:number_of_genes)'
@@ -893,7 +916,34 @@ function networkinference(y)
 		output[i,2] = edge.genes[2].name
 		output[i,3] = edge.confidence
 	end
-	output
+
+	for i in 1:size(output,1)
+		inthere = false
+		edge = [float(output[i,1]), float(output[i,2])]
+		for parent in trueparents
+			if (edge[1] == parent.speciesnum && edge[2] in parent.parents) || (edge[2] == parent.speciesnum && edge[1] in parent.parents)
+				inthere = true
+			end
+		end
+		if inthere
+			push!(truth, true)
+		else
+			push!(truth, false)
+		end
+	end
+
+	scores = output[:,3]
+
+	aupr = average_precision_score(truth, scores)
+	auroc = roc_auc_score(truth, scores)
+
+	# prcurve = precision_recall_curve(truth, scores)[1:2]
+	# roccurve = roc_curve(truth, scores)[1:2]
+	# PyPlot.plot(prcurve[2],prcurve[1])
+	# PyPlot.plot(roccurve[1],roccurve[2])
+
+	# output, truth, scores, aupr, auroc
+	output, aupr, auroc
 end
 
 
