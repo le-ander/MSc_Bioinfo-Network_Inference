@@ -50,6 +50,12 @@ end
 
 
 function datasettings(srcset::Symbol, interclass, usefix)
+	initp::Vector{Float64} = []
+	lowerb::Vector{Float64} = []
+	upperb::Vector{Float64} = []
+	repinit::Vector{Float64} = []
+	replow::Vector{Float64} = []
+	rephigh::Vector{Float64} = []
 	function oscodesys(t,u,du)
 		du[1] = 0.2 - 0.9*u[1] + 2.0*((u[5]^5.0)/(1.5^5.0+u[5]^5.0))
 		du[2] = 0.2 - 0.9*u[2] + 2.0*((u[1]^5.0)/(1.5^5.0+u[1]^5.0))
@@ -357,7 +363,7 @@ function interpolate(x, y, rmfl::Bool, gpnum::Int)
 
 		m[:optimize_restarts](num_restarts = 16, verbose=false, parallel=true)
 
-		println(m[:param_array])
+		# println(m[:param_array])
 
 		for (i,species) in enumerate(comb)
 			count[species] += 1
@@ -551,7 +557,7 @@ function construct_ode(topology, fixparm, xmu, xdotmu, interclass)
 
 			sum(((basis .+ fact .+ frepr ) .- xdotmu[:,topology.speciesnum]) .^ 2.0)
 		end
-		return multodefunc
+		return addodefunc
 	end
 end
 
