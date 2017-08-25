@@ -61,6 +61,15 @@ println("AUPR BIC ", aupr_bic)
 println("AUROC AIC ", auroc_aic)
 println("AUROC BIC ", auroc_bic)
 
-# output, thalia_aupr, thalia_auroc = networkinference(y, trueparents)
-# println("AUPR ", thalia_aupr)
-# println("AUROC ", thalia_auroc)
+output, thalia_aupr, thalia_auroc = networkinference(y, trueparents)
+println("AUPR ", thalia_aupr)
+println("AUROC ", thalia_auroc)
+
+\t$ranks\t$bestmodels\t$truedges\t$othersum\t$aupr_aic\t$aupr_bic\t$auroc_aic\t$auroc_bic\t$thalia_aupr\t$thalia_auroc
+
+open("log.csv", "a") do f
+	write(f, "numspecies\tsrcset\ttspan\tδt\tσ\tmaxinter\tinterclass\tusefix\tsuminter\tgpnum\trmfl\tranks\tbestmodels\ttruedges\tothersum\taupr_aic\taupr_bic\tauroc_aic\tauroc_bic\tthalia_aupr\tthalia_auroc")
+	write(f, "\n")
+	write(f, "$numspecies\t$srcset\t$tspan\t$δt\t$σ\t$maxinter\t$interclass\t$usefix\t$suminter\t$gpnum\t$rmfl\t$ranks\t$bestmodels\t$truedges\t$othersum\t$aupr_aic\t$aupr_bic\t$auroc_aic\t$auroc_bic\t$thalia_aupr\t$thalia_auroc")
+	write(f, "\n")
+end
