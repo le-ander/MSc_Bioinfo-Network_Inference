@@ -17,7 +17,7 @@ tspan = (0.0,20.0)
 # Define possible parent sets
 maxinter = 2
 interclass = nothing # :add :mult nothing
-usefix = true	#ODEonly
+usefix = false	#ODEonly
 
 suminter = false	#ODEonly
 
@@ -62,14 +62,17 @@ println("AUROC AIC ", auroc_aic)
 println("AUROC BIC ", auroc_bic)
 
 output, thalia_aupr, thalia_auroc = networkinference(y, trueparents)
-println("AUPR ", thalia_aupr)
-println("AUROC ", thalia_auroc)
+println("PIDC AUPR ", thalia_aupr)
+println("PIDC AUROC ", thalia_auroc)
 
-\t$ranks\t$bestmodels\t$truedges\t$othersum\t$aupr_aic\t$aupr_bic\t$auroc_aic\t$auroc_bic\t$thalia_aupr\t$thalia_auroc
+cnt = float(readline("count.txt"))
+write("count.txt", string(cnt+1))
+
+dtime = now()
 
 open("log.csv", "a") do f
-	write(f, "numspecies\tsrcset\ttspan\tδt\tσ\tmaxinter\tinterclass\tusefix\tsuminter\tgpnum\trmfl\tranks\tbestmodels\ttruedges\tothersum\taupr_aic\taupr_bic\tauroc_aic\tauroc_bic\tthalia_aupr\tthalia_auroc")
-	write(f, "\n")
-	write(f, "$numspecies\t$srcset\t$tspan\t$δt\t$σ\t$maxinter\t$interclass\t$usefix\t$suminter\t$gpnum\t$rmfl\t$ranks\t$bestmodels\t$truedges\t$othersum\t$aupr_aic\t$aupr_bic\t$auroc_aic\t$auroc_bic\t$thalia_aupr\t$thalia_auroc")
+	# write(f, "id\ttime\tnumspecies\tsrcset\ttspan\tdt\tsigma\tmaxinter\tinterclass\tusefix\tsuminter\tgpnum\trmfl\taupr_aic\taupr_bic\tauroc_aic\tauroc_bic\tthalia_aupr\tthalia_auroc\tranks\tbestmodels\ttruedges\tothersum\tedgeweights")
+	# write(f, "\n")
+	write(f, "$cnt\t$dtime\t$numspecies\t$srcset\t$tspan\t$δt\t$σ\t$maxinter\t$interclass\t$usefix\t$suminter\t$gpnum\t$rmfl\t$aupr_aic\t$aupr_bic\t$auroc_aic\t$auroc_bic\t$thalia_aupr\t$thalia_auroc\t$ranks\t$bestmodels\t$truedges\t$othersum\t$edgeweights")
 	write(f, "\n")
 end

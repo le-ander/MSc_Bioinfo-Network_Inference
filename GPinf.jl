@@ -575,7 +575,7 @@ end
 function optimise_params!(topology::Parset, fixparm, xmu, xdotmu, interclass, initial, lower, upper, prmrep)
 	f = construct_ode(topology, fixparm, xmu, xdotmu, interclass)
 	n = size(xmu,1)
-	if topology.intercount == 0
+	if topology.intercount == 0 && fixparm != []
 		topology.dist = f([])
 		topology.modaic = n * log(topology.dist / n) + 2 * 0
 		topology.modbic = n * log(topology.dist / n) + log(n) * 0
