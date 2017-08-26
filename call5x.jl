@@ -6,22 +6,22 @@ using GPinf
 
 # Define source data
 numspecies = 5
-srcset = :lin # :lin :osc :gnw
+srcset = :osc # :lin :osc :gnw
 gnwpath = "/cluster/home/ld2113/work/data/thalia-simulated/InSilicoSize10-Yeast1_dream4_timeseries_one.tsv"
 
 # Simulate source data
 tspan = (0.0,20.0)
-δt = 1.0
+δt = 0.5
 σ = 0.0 # Std.dev for ode + obs. noise or :sde
 
 # Define possible parent sets
 maxinter = 2
-interclass = nothing # :add :mult nothing
+interclass = :add # :add :mult nothing
 usefix = false	#ODEonly
 
 suminter = false	#ODEonly
 
-gpnum = nothing # For multioutput gp: how many outputs at once, for single: nothing
+gpnum = numspecies # For multioutput gp: how many outputs at once, for single: nothing
 
 rmfl = false
 
@@ -35,6 +35,11 @@ repeats = 5
 cnt = float(readline("count.txt"))
 write("count.txt", string(cnt+5))
 
+if interclass == nothing
+	avgindx = 3
+else
+	avgindx = 4
+end
 avg_aupr_aic = 0.0
 avg_aupr_bic = 0.0
 avg_auroc_aic = 0.0
@@ -102,13 +107,13 @@ for i = 1:repeats
 		avg_truedges = truedges
 		avg_edgeweights = edgeweights
 	else
-		avg_truedges[:,[3,4]] .+= truedges[:,[3,4]]
-		avg_edgeweights[:,[3,4]] .+= edgeweights[:,[3,4]]
+		avg_truedges[:,[avgindx, avgindx+1]] .+= truedges[:,[3,4]]
+		avg_edgeweights[:,[avgindx, avgindx+1]] .+= edgeweights[:,[3,4]]
 	end
 end
 
-avg_truedges[:,[3,4]] ./= repeats
-avg_edgeweights[:,[3,4]] ./= repeats
+avg_truedges[:,[avgindx, avgindx+1]] ./= repeats
+avg_edgeweights[:,[avgindx, avgindx+1]] ./= repeats
 
 open("logmean.csv", "a") do f
 	# write(f, "id\ttime\tnumspecies\tsrcset\ttspan\tdt\tsigma\tmaxinter\tinterclass\tusefix\tsuminter\tgpnum\trmfl\taupr_aic\taupr_bic\tauroc_aic\tauroc_bic\tthalia_aupr\tthalia_auroc\ttruedges\tothersum\tedgeweights")
