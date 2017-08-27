@@ -21,7 +21,7 @@ usefix = false	#ODEonly
 
 suminter = false	#ODEonly
 
-gpnum = numspecies # For multioutput gp: how many outputs at once, for single: nothing
+gpnum = nothing # For multioutput gp: how many outputs at once, for single: nothing
 
 rmfl = false
 
@@ -107,8 +107,8 @@ for i = 1:repeats
 		avg_truedges = truedges
 		avg_edgeweights = edgeweights
 	else
-		avg_truedges[:,[avgindx, avgindx+1]] .+= truedges[:,[3,4]]
-		avg_edgeweights[:,[avgindx, avgindx+1]] .+= edgeweights[:,[3,4]]
+		avg_truedges[:,[avgindx, avgindx+1]] .+= truedges[:,[avgindx, avgindx+1]]
+		avg_edgeweights[:,[avgindx, avgindx+1]] .+= edgeweights[:,[avgindx, avgindx+1]]
 	end
 end
 
