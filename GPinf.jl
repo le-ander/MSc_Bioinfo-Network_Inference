@@ -1,7 +1,8 @@
 module GPinf
 
 using Juno
-import DifferentialEquations, PyCall, PyPlot, Distributions, Optim, Combinatorics, NetworkInference, ScikitLearn
+import DifferentialEquations, PyCall, Distributions, Optim, Combinatorics, NetworkInference, ScikitLearn
+# import PyPlot
 
 ScikitLearn.@sk_import metrics: (average_precision_score, precision_recall_curve,
 									roc_auc_score, roc_curve)
