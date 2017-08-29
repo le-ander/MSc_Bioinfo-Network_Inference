@@ -1,6 +1,7 @@
 log.csv
 logmean.csv
 count.txt
+nohup.out
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
