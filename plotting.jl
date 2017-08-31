@@ -1,6 +1,6 @@
 using DataFrames, StatPlots, Plots
 
-df = readtable("logs/logmean_corrected.csv", separator='	')
+df = readtable("../logs/logmean_corrected.csv", separator='	')
 
 leftfeature = Vector{String}(0)
 rightfeature = Vector{String}(0)
