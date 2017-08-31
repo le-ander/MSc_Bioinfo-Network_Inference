@@ -1,6 +1,6 @@
 using DataFrames, StatPlots, Plots
 
-df = readtable("logmean.csv", separator='	')
+df = readtable("logs/logmean_corrected.csv", separator='	')
 
 leftfeature = Vector{String}(0)
 rightfeature = Vector{String}(0)
@@ -76,7 +76,7 @@ leftaupr = vcat(leftaupr, templ)
 rightaupr = vcat(rightaupr, tempr)
 push!(leftfeature,[name for i in 1:length(templ)]...)
 push!(rightfeature,[name for i in 1:length(tempr)]...)
-
+"""
 name = "J ODE nf / PIDC"
 templ = df[(df[:interclass] .!= "nothing") & (df[:usefix] .== false), :][:aupr_bic]
 tempr = df[:thalia_aupr]
@@ -84,7 +84,7 @@ leftaupr = vcat(leftaupr, templ)
 rightaupr = vcat(rightaupr, tempr)
 push!(leftfeature,[name for i in 1:length(templ)]...)
 push!(rightfeature,[name for i in 1:length(tempr)]...)
-
+"""
 
 left = DataFrame()
 left[:Feature] = leftfeature

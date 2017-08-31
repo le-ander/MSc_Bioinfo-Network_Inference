@@ -860,17 +860,24 @@ end
 
 function performance(edgeweights,trueparents)
 	truth = Vector{Bool}(0)
-	indx = 0
-	if size(edgeweights,1) == length(trueparents)^2
+	if size(edgeweights,1) == length(trueparents)^2 # GP
+		scoreaic = Vector{Float64}(0)
+		scorebic = Vector{Float64}(0)
 		for i in 1:size(edgeweights,1)
+			if edgeweights[i,1] == edgeweights[i,2]
+				continue
+			end
+			push!(scoreaic,edgeweights[i,3])
+			push!(scorebic,edgeweights[i,4])
 			if edgeweights[i,2] in trueparents[convert(Int,edgeweights[i,1])].parents
 				push!(truth,true)
 			else
 				push!(truth,false)
 			end
 		end
-	else
-		indx = 1
+	else # ODE
+		scoreaic = edgeweights[:,4]
+		scorebic = edgeweights[:,5]
 		for i in 1:size(edgeweights,1)
 			thispset = trueparents[convert(Int,edgeweights[i,1])]
 			if edgeweights[i,2] in thispset.parents &&
@@ -881,17 +888,16 @@ function performance(edgeweights,trueparents)
 			end
 		end
 	end
-	scores = edgeweights[:,[3+indx,4+indx]]
 
 	# prcurve = precision_recall_curve(truth, scrs[:,1])[1:2]
 	# roccurve = roc_curve(truth, scrs[:,1])[1:2]
 	# PyPlot.plot(prcurve[2],prcurve[1])
 	# PyPlot.plot(roccurve[1],roccurve[2])
 
-	aupr_aic = average_precision_score(truth, scores[:,1])
-	aupr_bic = average_precision_score(truth, scores[:,2])
-	auroc_aic = roc_auc_score(truth, scores[:,1])
-	auroc_bic = roc_auc_score(truth, scores[:,2])
+	aupr_aic = average_precision_score(truth, scoreaic)
+	aupr_bic = average_precision_score(truth, scorebic)
+	auroc_aic = roc_auc_score(truth, scoreaic)
+	auroc_bic = roc_auc_score(truth, scorebic)
 
 	aupr_aic, aupr_bic, auroc_aic, auroc_bic
 end
