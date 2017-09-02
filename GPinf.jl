@@ -2,7 +2,7 @@ module GPinf
 
 using Juno
 import DifferentialEquations, PyCall, Distributions, Optim, Combinatorics, NetworkInference, ScikitLearn
-# import PyPlot
+import PyPlot
 
 ScikitLearn.@sk_import metrics: (average_precision_score, precision_recall_curve,
 									roc_auc_score, roc_curve)
@@ -116,19 +116,19 @@ function datasettings(srcset::Symbol, interclass, usefix)
 		else
 			fixparm = []
 			if interclass == :mult
-				initp =  [0.5,1.0,1.0]
-				lowerb = [0.1,0.5,0.5]
-				upperb = [2.0,2.0,4.0]
+				initp =  [1.0,1.0,1.0]
+				lowerb = [0.0,0.0,0.0]
+				upperb = [0.0,0.0,0.0]
 				repinit = [1.0,1.0]
-				replow = [0.7,0.2]
-				rephigh = [5.0,3.0]
+				replow = [0.0,0.0]
+				rephigh = [0.0,0.0]
 			elseif interclass == :add
-				initp =  [0.5,1.0]
-				lowerb = [0.1,0.5]
-				upperb = [2.0,2.0]
+				initp =  [1.0,1.0]
+				lowerb = [0.0,0.0]
+				upperb = [0.0,0.0]
 				repinit = [1.0,1.0,1.0]
-				replow = [0.5,0.7,0.2]
-				rephigh = [4.0,5.0,3.0]
+				replow = [0.0,0.0,0.0]
+				rephigh = [0.0,0.0,0.0]
 			else
 				initp = []
 				lowerb = []
@@ -181,19 +181,19 @@ function datasettings(srcset::Symbol, interclass, usefix)
 		else
 			fixparm = []
 			if interclass == :mult
-				initp =  [0.5,1.0,1.0]
-				lowerb = [0.1,0.5,0.0]
-				upperb = [2.0,2.0,5.0]
-				repinit = [2.0,1.0]
-				replow = [0.1,0.0]
-				rephigh = [5.0,4.0]
+				initp =  [1.0,1.0,1.0]
+				lowerb = [0.0,0.0,0.0]
+				upperb = [0.0,0.0,0.0]
+				repinit = [1.0,1.0]
+				replow = [0.0,0.0]
+				rephigh = [0.0,0.0]
 			elseif interclass == :add
-				initp =  [0.5,1.0]
-				lowerb = [0.1,0.5]
-				upperb = [2.0,2.0]
-				repinit = [1.0,2.0,1.0]
-				replow = [0.0,0.1,0.0]
-				rephigh = [5.0,5.0,4.0]
+				initp =  [1.0,1.0]
+				lowerb = [0.0,0.0]
+				upperb = [0.0,0.0]
+				repinit = [1.0,1.0,1.0]
+				replow = [0.0,0.0,0.0]
+				rephigh = [0.0,0.0,0.0]
 			else
 				initp = []
 				lowerb = []
@@ -221,19 +221,19 @@ function datasettings(srcset::Symbol, interclass, usefix)
 	elseif srcset == :gnw
 		fixparm = []
 		if interclass == :mult
-			initp =  [0.5,1.0,1.0]
-			lowerb = [0.1,0.5,0.0]
-			upperb = [2.0,2.0,5.0]
-			repinit = [2.0,1.0]
-			replow = [0.1,0.0]
-			rephigh = [5.0,4.0]
+			initp =  [1.0,1.0,1.0]
+			lowerb = [0.0,0.0,0.0]
+			upperb = [0.0,0.0,0.0]
+			repinit = [1.0,1.0]
+			replow = [0.0,0.0]
+			rephigh = [0.0,0.0]
 		elseif interclass == :add
-			initp =  [0.5,1.0]
-			lowerb = [0.1,0.5]
-			upperb = [2.0,2.0]
-			repinit = [1.0,2.0,1.0]
-			replow = [0.0,0.1,0.0]
-			rephigh = [5.0,5.0,4.0]
+			initp =  [1.0,1.0]
+			lowerb = [0.0,0.0]
+			upperb = [0.0,0.0]
+			repinit = [1.0,1.0,1.0]
+			replow = [0.0,0.0,0.0]
+			rephigh = [0.0,0.0,0.0]
 		else
 			initp = []
 			lowerb = []
@@ -311,7 +311,7 @@ function simulate(odesys, sdesys, numspecies, tspan, step, noise::Symbol)
 end
 
 
-function interpolate(x, y, rmfl::Bool, gpnum::Void)
+function interpolate(x, y, lengthscale, rmfl::Bool, gpnum::Void)
 	kernel = gkern.RBF(input_dim=1)
 	xmu = Array{Float64}(size(y))
 	xvar = Array{Float64}(size(y))
@@ -324,11 +324,13 @@ function interpolate(x, y, rmfl::Bool, gpnum::Void)
 		m = gmodels.GPRegression(x,Y,kernel)
 
 		# m[:rbf]["variance"][:constrain_fixed](1e-1)
-		# m[:rbf]["lengthscale"][:constrain_bounded](0.0,5.0)
+		if lengthscale ≠ nothing
+			m[:rbf]["lengthscale"][:constrain_fixed](lengthscale)
+		end
 		# m[:Gaussian_noise]["variance"][:constrain_fixed](0.1)
 
-		m[:optimize_restarts](num_restarts = 5, verbose=false, parallel=false)
-		# m[:plot](plot_density=false)
+		m[:optimize_restarts](num_restarts = 5, verbose=false, parallel=true)
+		m[:plot](plot_density=false)
 
 		# println(m[:param_array])
 
@@ -348,7 +350,7 @@ function interpolate(x, y, rmfl::Bool, gpnum::Void)
 	x, xmu, xvar, xdotmu, xdotvar
 end
 
-function interpolate(x, y, rmfl::Bool, gpnum::Int)
+function interpolate(x, y, lengthscale, rmfl::Bool, gpnum::Int)
 	speciesnum = size(y,2)
 	eulersx = Vector{Float64}((length(x))*2)
 	eulersy = zeros((length(x))*2,speciesnum)
@@ -369,10 +371,12 @@ function interpolate(x, y, rmfl::Bool, gpnum::Int)
 		m = gmodels.GPCoregionalizedRegression([x for i in comb],ytemp,kernel=icm)
 
 		# m[:ICM][:rbf]["variance"][:constrain_fixed](1e-1)
-		# m[:ICM][:rbf]["lengthscale"][:constrain_bounded](0.0,5.0)
+		if lengthscale ≠ nothing
+			m[:ICM][:rbf]["lengthscale"][:constrain_fixed](lengthscale)
+		end
 		# m[:mixed_noise][:constrain_fixed](0.1)
 
-		m[:optimize_restarts](num_restarts = 16, verbose=false, parallel=true)
+		m[:optimize_restarts](num_restarts = 8, verbose=false, parallel=true)
 
 		# println(m[:param_array])
 
@@ -586,7 +590,11 @@ function optimise_params!(topology::Parset, fixparm, xmu, xdotmu, interclass, in
 			lower = vcat(lower,prmrep[:,2])
 			upper = vcat(upper,prmrep[:,3])
 		end
-		results = Optim.optimize(f, initial[:], lower[:], upper[:], Optim.Fminbox{Optim.NelderMead}())
+		if fixparm != []
+			results = Optim.optimize(f, initial[:], lower[:], upper[:], Optim.Fminbox{Optim.NelderMead}())
+		else
+			results = Optim.optimize(f, initial[:], Optim.NelderMead())
+		end
 		topology.params = results.minimizer
 		topology.modaic = n * log(results.minimum / n) + 2 * length(results.minimizer)
 		topology.modbic = n * log(results.minimum / n) + log(n)*length(results.minimizer)
@@ -597,7 +605,7 @@ end
 function optimise_params!(gppar::GPparset, x, y)
 	kernel = gkern.RBF(input_dim=gppar.intercount, variance=1, lengthscale=1)
 	m = gmodels.GPRegression(x,y,kernel)
-	m[:optimize_restarts](num_restarts = 5, verbose=false)
+	m[:optimize_restarts](num_restarts = 5, verbose=false, parallel=false)
 	# m[:plot](plot_density=false)
 	gppar.params = m[:param_array]
 	gppar.lik = m[:log_likelihood]()
@@ -620,6 +628,7 @@ function optimise_models!(parsets::Array{Parset,2}, fixparm, xmu, xdotmu, interc
 				par.modaic = Inf
 				par.dist = Inf
 			else
+				throw(err)
 				error("Non - DomainError in optimisation.")
 			end
 		end
@@ -827,7 +836,7 @@ function edgesummary(edgeweights,trueparents)
 	first = true
 	if size(edgeweights,1) == length(trueparents)^2
 		for i in 1:size(edgeweights,1)
-			if edgeweights[i,2] in trueparents[convert(Int,edgeweights[i,1])].parents
+			if edgeweights[i,2] in trueparents[convert(Int,edgeweights[i,1])].parents && edgeweights[i,2] ≠ trueparents[convert(Int,edgeweights[i,1])].speciesnum
 				if first
 					truedges = edgeweights[i,:]'
 					first = false
