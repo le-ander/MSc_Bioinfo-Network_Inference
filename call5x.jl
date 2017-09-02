@@ -5,24 +5,24 @@ using GPinf
 
 
 # Define source data
-numspecies = 5
-srcset = :lin # :lin :osc :gnw
+numspecies = 10
+srcset = :gnw # :lin :osc :gnw
 gnwpath = "/cluster/home/ld2113/work/data/thalia-simulated/InSilicoSize10-Yeast1_dream4_timeseries_one.tsv"
 
 # Simulate source data
 tspan = (0.0,20.0)
-δt = 50.0
+δt = 25.0 #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 σ = 0.0 # Std.dev for ode + obs. noise or :sde
 
 # Define possible parent sets
-maxinter = 3
-interclass = :mult # :add :mult nothing
+maxinter = 2 #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+interclass = :mult # :add :mult nothing #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 lengthscales= [50.0,100.0,150.0,200.0]
 usefix = false	#ODEonly
 
 suminter = false	#ODEonly
-
-gpnum = 5 # For multioutput gp: how many outputs at once, for single: nothing
+#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+gpnum = nothing # For multioutput gp: how many outputs at once, for single: nothing
 
 rmfl = false
 

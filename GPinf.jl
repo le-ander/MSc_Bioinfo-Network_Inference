@@ -2,7 +2,7 @@ module GPinf
 
 using Juno
 import DifferentialEquations, PyCall, Distributions, Optim, Combinatorics, NetworkInference, ScikitLearn
-import PyPlot
+# import PyPlot
 
 ScikitLearn.@sk_import metrics: (average_precision_score, precision_recall_curve,
 									roc_auc_score, roc_curve)
@@ -311,12 +311,20 @@ function simulate(odesys, sdesys, numspecies, tspan, step, noise::Symbol)
 end
 
 
-function interpolate(x, y, lengthscale, rmfl::Bool, gpnum::Void)
+function interpolate(x, y, δt, lengthscale, rmfl::Bool, gpnum::Void)
 	kernel = gkern.RBF(input_dim=1)
-	xmu = Array{Float64}(size(y))
-	xvar = Array{Float64}(size(y))
-	xdotmu = Array{Float64}(size(y))
-	xdotvar = Array{Float64}(size(y))
+	if δt == 25.0
+		xnew = collect(0.0:25.0:1000.0)[:,:]
+		xmu = Array{Float64}((length(xnew),size(y,2)))
+		xvar = Array{Float64}((length(xnew),size(y,2)))
+		xdotmu = Array{Float64}((length(xnew),size(y,2)))
+		xdotvar = Array{Float64}((length(xnew),size(y,2)))
+	else
+		xmu = Array{Float64}(size(y))
+		xvar = Array{Float64}(size(y))
+		xdotmu = Array{Float64}(size(y))
+		xdotvar = Array{Float64}(size(y))
+	end
 
 	for i = 1:size(y,2)
 		Y = reshape(y[:,i],(:,1))
@@ -330,12 +338,16 @@ function interpolate(x, y, lengthscale, rmfl::Bool, gpnum::Void)
 		# m[:Gaussian_noise]["variance"][:constrain_fixed](0.1)
 
 		m[:optimize_restarts](num_restarts = 5, verbose=false, parallel=true)
-		m[:plot](plot_density=false)
+		# m[:plot](plot_density=false)
 
 		# println(m[:param_array])
-
-		vals = m[:predict](x)
-		deriv = m[:predict_jacobian](x)
+		if δt == 25.0
+			vals = m[:predict](xnew)
+			deriv = m[:predict_jacobian](xnew)
+		else
+			vals = m[:predict](x)
+			deriv = m[:predict_jacobian](x)
+		end
 
 		xmu[:,i] = vals[1][:]
 		xvar[:,i] = vals[2][:]
@@ -350,24 +362,42 @@ function interpolate(x, y, lengthscale, rmfl::Bool, gpnum::Void)
 	x, xmu, xvar, xdotmu, xdotvar
 end
 
-function interpolate(x, y, lengthscale, rmfl::Bool, gpnum::Int)
+function interpolate(x, y, δt, lengthscale, rmfl::Bool, gpnum::Int)
 	speciesnum = size(y,2)
-	eulersx = Vector{Float64}((length(x))*2)
-	eulersy = zeros((length(x))*2,speciesnum)
-	Δ = 1e-4
-	for (i, val) in enumerate(x)
-		eulersx[i*2-1] = val - Δ/2
-		eulersx[i*2] = val + Δ/2
-	end
 
-	count = zeros(Int, speciesnum)'
-	xmu = zeros(size(y))
-	xvar = zeros(size(y))
-	xdotmu = Array{Float64}(convert(Int,size(eulersy,1)/2),speciesnum)
+	if δt == 25.0
+		xnew = collect(0.0:25.0:1000.0)[:,:]
+		eulersx = Vector{Float64}((length(xnew))*2)
+		eulersy = zeros((length(xnew))*2,speciesnum)
+		Δ = 1e-4
+		for (i, val) in enumerate(xnew)
+			eulersx[i*2-1] = val - Δ/2
+			eulersx[i*2] = val + Δ/2
+		end
+
+		count = zeros(Int, speciesnum)'
+		xmu = zeros(length(xnew),speciesnum)
+		xvar = zeros(length(xnew),speciesnum)
+		xdotmu = Array{Float64}(convert(Int,size(eulersy,1)/2),speciesnum)
+	else
+		eulersx = Vector{Float64}((length(x))*2)
+		eulersy = zeros((length(x))*2,speciesnum)
+		Δ = 1e-4
+		for (i, val) in enumerate(x)
+			eulersx[i*2-1] = val - Δ/2
+			eulersx[i*2] = val + Δ/2
+		end
+
+		count = zeros(Int, speciesnum)'
+		xmu = zeros(size(y))
+		xvar = zeros(size(y))
+		xdotmu = Array{Float64}(convert(Int,size(eulersy,1)/2),speciesnum)
+	end
 
 	for comb in Combinatorics.combinations(1:speciesnum, gpnum)
 		ytemp = [reshape(y[:,i],(:,1)) for i in comb]
 		icm = gmulti.ICM(input_dim=1,num_outputs=gpnum,kernel=gkern.RBF(1))
+
 		m = gmodels.GPCoregionalizedRegression([x for i in comb],ytemp,kernel=icm)
 
 		# m[:ICM][:rbf]["variance"][:constrain_fixed](1e-1)
@@ -380,19 +410,28 @@ function interpolate(x, y, lengthscale, rmfl::Bool, gpnum::Int)
 
 		# println(m[:param_array])
 
-		for (i,species) in enumerate(comb)
-			count[species] += 1
-			prediction = m[:predict](hcat(x,[i-1 for t in x]), Y_metadata=Dict("output_index" => Int[i-1 for t in x]))
-			eulersy[:,species] .+= m[:predict](hcat(eulersx,[i-1 for t in eulersx]), Y_metadata=Dict("output_index" => Int[i-1 for t in eulersx]))[1][:]
-			xmu[:,species] .+= prediction[1][:]
-			xvar[:,species] .+= prediction[2][:]
+		if δt == 25.0
+			for (i,species) in enumerate(comb)
+				count[species] += 1
+				prediction = m[:predict](hcat(xnew,[i-1 for t in xnew]), Y_metadata=Dict("output_index" => Int[i-1 for t in xnew]))
+				eulersy[:,species] .+= m[:predict](hcat(eulersx,[i-1 for t in eulersx]), Y_metadata=Dict("output_index" => Int[i-1 for t in eulersx]))[1][:]
+				xmu[:,species] .+= prediction[1][:]
+				xvar[:,species] .+= prediction[2][:]
+			end
+		else
+			for (i,species) in enumerate(comb)
+				count[species] += 1
+				prediction = m[:predict](hcat(x,[i-1 for t in x]), Y_metadata=Dict("output_index" => Int[i-1 for t in x]))
+				eulersy[:,species] .+= m[:predict](hcat(eulersx,[i-1 for t in eulersx]), Y_metadata=Dict("output_index" => Int[i-1 for t in eulersx]))[1][:]
+				xmu[:,species] .+= prediction[1][:]
+				xvar[:,species] .+= prediction[2][:]
+			end
 		end
 	end
 
 	xmu ./= count
 	xvar ./= count
 	eulersy ./= count
-	xnew = x[2:end-1,:]
 
 	for i = 1:length(xdotmu)
 		xdotmu[i] = (eulersy[2*i]-eulersy[2*i-1]) / Δ
