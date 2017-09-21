@@ -1,15 +1,27 @@
 using DataFrames, StatPlots, Plots
+pyplot()
 
 df = readtable("../logs/logmean.csv", separator='	')
 
 leftfeature = Vector{String}(0)
 rightfeature = Vector{String}(0)
 
+# df = df[(df[:interclass] .== "nothing"), :]
+# df = df[(df[:interclass] .!= "nothing") & (df[:usefix] .== false), :]
+
 name = "A Osc. / Non-osc."
 templ = df[(df[:srcset] .== "osc"), :][:aupr_bic]
 tempr = df[(df[:srcset] .== "lin"), :][:aupr_bic]
 leftaupr = templ
 rightaupr = tempr
+push!(leftfeature,[name for i in 1:length(templ)]...)
+push!(rightfeature,[name for i in 1:length(tempr)]...)
+
+name = "B so GP / mo GP"
+templ = df[(df[:gpnum] .== "nothing"), :][:aupr_bic]
+tempr = df[(df[:gpnum] .== "5"), :][:aupr_bic]
+leftaupr = vcat(leftaupr, templ)
+rightaupr = vcat(rightaupr, tempr)
 push!(leftfeature,[name for i in 1:length(templ)]...)
 push!(rightfeature,[name for i in 1:length(tempr)]...)
 
@@ -28,6 +40,7 @@ leftaupr = vcat(leftaupr, templ)
 rightaupr = vcat(rightaupr, tempr)
 push!(leftfeature,[name for i in 1:length(templ)]...)
 push!(rightfeature,[name for i in 1:length(tempr)]...)
+
 """
 name = "F ODE f / GP"
 templ = df[(df[:interclass] .!= "nothing") & (df[:usefix] .== true), :][:aupr_bic]
@@ -48,14 +61,6 @@ push!(rightfeature,[name for i in 1:length(tempr)]...)
 name = "E ODE f /ODE nf"
 templ = df[(df[:interclass] .!= "nothing") & (df[:usefix] .== true), :][:aupr_bic]
 tempr = df[(df[:interclass] .!= "nothing") & (df[:usefix] .== false), :][:aupr_bic]
-leftaupr = vcat(leftaupr, templ)
-rightaupr = vcat(rightaupr, tempr)
-push!(leftfeature,[name for i in 1:length(templ)]...)
-push!(rightfeature,[name for i in 1:length(tempr)]...)
-"""
-name = "B so GP / mo GP"
-templ = df[(df[:gpnum] .== "nothing"), :][:aupr_bic]
-tempr = df[(df[:gpnum] .== "5"), :][:aupr_bic]
 leftaupr = vcat(leftaupr, templ)
 rightaupr = vcat(rightaupr, tempr)
 push!(leftfeature,[name for i in 1:length(templ)]...)
@@ -84,7 +89,7 @@ leftaupr = vcat(leftaupr, templ)
 rightaupr = vcat(rightaupr, tempr)
 push!(leftfeature,[name for i in 1:length(templ)]...)
 push!(rightfeature,[name for i in 1:length(tempr)]...)
-
+"""
 
 left = DataFrame()
 left[:Feature] = leftfeature
@@ -93,5 +98,8 @@ right = DataFrame()
 right[:Feature] = rightfeature
 right[:AUPR] = rightaupr
 
-myPlot = violin(left,:Feature,:AUPR, side=:left, marker=(0.2,:blue,stroke(0)), legend=false, ylims=(0,1.0))
-violin!(right,:Feature,:AUPR, side=:right, marker=(0.2,:red,stroke(0)))
+myPlot = violin(left,:Feature,:AUPR, side=:left, marker=(0.2), legend=false, ylims=(0,1.0), color=:black, xaxis=font(20), yaxis=(font(20)), line=[nothing, nothing, nothing, nothing])
+violin!(right,:Feature,:AUPR, side=:right, marker=(0.2), color=:grey, line=[nothing, nothing, nothing, nothing])
+
+gui()
+# savefig("test.pdf")

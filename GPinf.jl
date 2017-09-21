@@ -2,7 +2,7 @@ module GPinf
 
 using Juno
 import DifferentialEquations, PyCall, Distributions, Optim, Combinatorics, NetworkInference, ScikitLearn
-# import PyPlot
+import PyPlot
 
 ScikitLearn.@sk_import metrics: (average_precision_score, precision_recall_curve,
 									roc_auc_score, roc_curve)
@@ -266,6 +266,55 @@ function datasettings(srcset::Symbol, interclass, usefix)
 							TParset(9, 1, [4], [:Repression]),
 							TParset(10, 0, [], [])]
 		end
+
+	elseif srcset == :gnw2
+		fixparm = []
+		if interclass == :mult
+			initp =  [1.0,1.0,1.0]
+			lowerb = [0.0,0.0,0.0]
+			upperb = [0.0,0.0,0.0]
+			repinit = [1.0,1.0]
+			replow = [0.0,0.0]
+			rephigh = [0.0,0.0]
+		elseif interclass == :add
+			initp =  [1.0,1.0]
+			lowerb = [0.0,0.0]
+			upperb = [0.0,0.0]
+			repinit = [1.0,1.0,1.0]
+			replow = [0.0,0.0,0.0]
+			rephigh = [0.0,0.0,0.0]
+		else
+			initp = []
+			lowerb = []
+			upperb = []
+			repinit = []
+			replow = []
+			rephigh = []
+		end
+
+		if interclass == nothing
+			trueparents = [TParset(1, 5, [1,2,3,4,6], [:Repression,:Activation,:Repression,:Activation]),
+							TParset(2, 5, [2,5,3,8,10], [:Repression, :Activation, :Activation, :Repression]),
+							TParset(3, 6, [3,6,7], [:Repression,:Activation]),
+							TParset(4, 7, [4,3,5,7,8,10], [:Activation,:Repression,:Repression,:Activation,:Activation]),
+							TParset(5, 3, [5,6,10], [:Activation,:Repression]),
+							TParset(6, 2, [6,7], [:Activation]),
+							TParset(7, 1, [7], []),
+							TParset(8, 3, [8,6,10], [:Activation,:Activation]),
+							TParset(9, 4, [9,3,4,6], [:Activation,:Repression,:Repression]),
+							TParset(10, 3, [10,6,7], [:Activation,:Repression])]
+		else
+			trueparents = [TParset(1, 4, [2,3,4,6], [:Repression,:Activation,:Repression,:Activation]),
+							TParset(2, 4, [5,3,8,10], [:Repression, :Activation, :Activation, :Repression]),
+							TParset(3, 2, [6,7], [:Repression,:Activation]),
+							TParset(4, 5, [3,5,7,8,10], [:Activation,:Repression,:Repression,:Activation,:Activation]),
+							TParset(5, 2, [6,10], [:Activation,:Repression]),
+							TParset(6, 1, [7], [:Activation]),
+							TParset(7, 0, [], []),
+							TParset(8, 2, [6,10], [:Activation,:Activation]),
+							TParset(9, 3, [3,4,6], [:Activation,:Repression,:Repression]),
+							TParset(10, 2, [6,7], [:Activation,:Repression])]
+		end
 	end
 	if srcset == :osc
 		return oscodesys, oscsdesys, fixparm, trueparents, hcat(initp, lowerb, upperb), hcat(repinit, replow, rephigh)
@@ -332,13 +381,15 @@ function interpolate(x, y, δt, lengthscale, rmfl::Bool, gpnum::Void)
 		m = gmodels.GPRegression(x,Y,kernel)
 
 		# m[:rbf]["variance"][:constrain_fixed](1e-1)
-		if lengthscale ≠ nothing
+		if lengthscale == "init150"
+			m[:rbf]["lengthscale"] = 150
+		elseif lengthscale ≠ nothing
 			m[:rbf]["lengthscale"][:constrain_fixed](lengthscale)
 		end
 		# m[:Gaussian_noise]["variance"][:constrain_fixed](0.1)
 
-		m[:optimize_restarts](num_restarts = 5, verbose=false, parallel=true)
-		# m[:plot](plot_density=false)
+		m[:optimize_restarts](num_restarts = 5, verbose=false, parallel=false)
+		m[:plot](plot_density=false)
 
 		# println(m[:param_array])
 		if δt == 25.0
@@ -401,12 +452,14 @@ function interpolate(x, y, δt, lengthscale, rmfl::Bool, gpnum::Int)
 		m = gmodels.GPCoregionalizedRegression([x for i in comb],ytemp,kernel=icm)
 
 		# m[:ICM][:rbf]["variance"][:constrain_fixed](1e-1)
-		if lengthscale ≠ nothing
+		if lengthscale == "init150"
+			m[:ICM][:rbf]["lengthscale"] = 150
+		elseif lengthscale ≠ nothing
 			m[:ICM][:rbf]["lengthscale"][:constrain_fixed](lengthscale)
 		end
 		# m[:mixed_noise][:constrain_fixed](0.1)
 
-		m[:optimize_restarts](num_restarts = 8, verbose=false, parallel=true)
+		m[:optimize_restarts](num_restarts = 8, verbose=false, parallel=false)
 
 		# println(m[:param_array])
 
@@ -644,7 +697,13 @@ end
 function optimise_params!(gppar::GPparset, x, y)
 	kernel = gkern.RBF(input_dim=gppar.intercount, variance=1, lengthscale=1)
 	m = gmodels.GPRegression(x,y,kernel)
-	m[:optimize_restarts](num_restarts = 5, verbose=false, parallel=false)
+	try
+		m[:optimize_restarts](num_restarts = 5, verbose=false, parallel=false)
+	catch
+		warn("Could not complete optimisation of 1 GP model.")
+		cnt = float(readline("error.txt"))
+		write("error.txt", string(cnt+1))
+	end
 	# m[:plot](plot_density=false)
 	gppar.params = m[:param_array]
 	gppar.lik = m[:log_likelihood]()
@@ -937,9 +996,9 @@ function performance(edgeweights,trueparents)
 		end
 	end
 
-	# prcurve = precision_recall_curve(truth, scrs[:,1])[1:2]
+	# prcurve = precision_recall_curve(truth, scoreaic)[1:2]
 	# roccurve = roc_curve(truth, scrs[:,1])[1:2]
-	# PyPlot.plot(prcurve[2],prcurve[1])
+	# PyPlot.plot(prcurve[2],prcurve[1], xlims=(0.0,10.))
 	# PyPlot.plot(roccurve[1],roccurve[2])
 
 	aupr_aic = average_precision_score(truth, scoreaic)

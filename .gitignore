@@ -1,5 +1,6 @@
+error.txt
 count.txt
-nohup.out
+nohup*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
