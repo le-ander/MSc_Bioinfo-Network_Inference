@@ -1,15 +1,11 @@
 module GPinf
 
 using Juno
-import DifferentialEquations, PyCall, Distributions, Optim, Combinatorics, NetworkInference, ScikitLearn
+import DifferentialEquations, PyCall, Distributions, Optim, Combinatorics, NetworkInference, ScikitLearn, DelimitedFiles
 import PyPlot
 
 ScikitLearn.@sk_import metrics: (average_precision_score, precision_recall_curve,
 									roc_auc_score, roc_curve)
-
-PyCall.@pyimport GPy.kern as gkern
-PyCall.@pyimport GPy.models as gmodels
-PyCall.@pyimport GPy.util.multioutput as gmulti
 
 export Parset, GPparset, TParset,
 		datasettings, simulate, interpolate,
@@ -21,7 +17,7 @@ export Parset, GPparset, TParset,
 mutable struct Parset
 	id::Int
 	speciesnum::Int
-	intercount::Int
+	intercnt::Int
 	parents::Array{Int, 1}
 	intertype::Array{Symbol,1}
 	params::Array{Float64,1}
@@ -35,7 +31,7 @@ end
 mutable struct GPparset
 	id::Int
 	speciesnum::Int
-	intercount::Int
+	intercnt::Int
 	parents::Array{Int, 1}
 	params::Array{Float64, 1}
 	lik::Float64
@@ -47,7 +43,7 @@ end
 
 struct TParset
 	speciesnum::Int
-	intercount::Int
+	intercnt::Int
 	parents::Array{Int, 1}
 	intertype::Array{Symbol,1}
 end
@@ -60,28 +56,28 @@ function datasettings(srcset::Symbol, interclass, usefix)
 	repinit::Vector{Float64} = []
 	replow::Vector{Float64} = []
 	rephigh::Vector{Float64} = []
-	function oscodesys(t,u,du)
+	function oscodesys(du,u,p,t)
 		du[1] = 0.2 - 0.9*u[1] + 2.0*((u[5]^5.0)/(1.5^5.0+u[5]^5.0))
 		du[2] = 0.2 - 0.9*u[2] + 2.0*((u[1]^5.0)/(1.5^5.0+u[1]^5.0))
 		du[3] = 0.2 - 0.7*u[3] + 2.0*((u[1]^5.0)/(1.5^5.0+u[1]^5.0))
 		du[4] = 0.2 - 1.5*u[4] + 2.0*((u[1]^5.0)/(1.5^5.0+u[1]^5.0)) + 2.0*(1.0/(1.0+(u[3]/1.5)^5.0))
 		du[5] = 0.2 - 1.5*u[5] + 2.0*((u[4]^5.0)/(1.5^5.0+u[4]^5.0)) + 2.0*(1.0/(1.0+(u[2]/1.5)^3.0))
 	end
-	function oscsdesys(t, u, du)
+	function oscsdesys(du,u,p,t)
 		du[1,1] = √(0.2 + 2.0*((u[5]^5.0)/(1.5^5.0+u[5]^5.0))); du[1,6] = -√(0.9*u[1]);
 		du[2,2] = √(0.2 + 2.0*((u[1]^5.0)/(1.5^5.0+u[1]^5.0))); du[2,7] = -√(0.9*u[2]);
 		du[3,3] = √(0.2 + 2.0*((u[1]^5.0)/(1.5^5.0+u[1]^5.0))); du[3,8] = -√(0.7*u[3]);
 		du[4,4] = √(0.2 + 2.0*((u[1]^5.0)/(1.5^5.0+u[1]^5.0)) + 2.0*(1.0/(1.0+(u[3]/1.5)^5.0))); du[4,9] = -√(1.5*u[4]);
 		du[5,5] = √(0.2 + 2.0*((u[4]^5.0)/(1.5^5.0+u[4]^5.0)) + 2.0*(1.0/(1.0+(u[2]/1.5)^3.0))); du[5,10] = -√(1.5*u[5]);
 	end
-	function linodesys(t,u,du)
+	function linodesys(du,u,p,t)
 		du[1] = 0.1-0.4*u[1]+2.0*((u[5]^2.0)/(1.5^2.0+u[5]^2.0))
 		du[2] = 0.2-0.4*u[2]+1.5*((u[1]^2.0)/(1.5^2.0+u[1]^2.0))*(1.0/(1.0+(u[5]/2.0)^1.0))
 		du[3] = 0.2-0.4*u[3]+2.0*((u[1]^2.0)/(1.5^2.0+u[1]^2.0))
 		du[4] = 0.4-0.1*u[4]+1.5*((u[1]^2.0)/(1.5^2.0+u[1]^2.0))*(1.0/(1.0+(u[3]/1.0)^2.0))
 		du[5] = 0.3-0.3*u[5]+2.0*((u[4]^2.0)/(1.0^2.0+u[4]^2.0))*(1.0/(1.0+(u[2]/0.5)^3.0))
 	end
-	function linsdesys(t, u, du)
+	function linsdesys(du,u,p,t)
 		du[1,1] = √(0.1 + 2.0*((u[5]^2.0)/(1.5^2.0+u[5]^2.0))); du[1,6] = -√(0.4*u[1]);
 		du[2,2] = √(0.2 + 1.5*((u[1]^2.0)/(1.5^2.0+u[1]^2.0))*(1.0/(1.0+(u[5]/2.0)^1.0))); du[2,7] = -√(0.4*u[2]);
 		du[3,3] = √(0.2 + 2.0*((u[1]^2.0)/(1.5^2.0+u[1]^2.0))); du[3,8] = -√(0.4*u[3]);
@@ -326,7 +322,7 @@ function datasettings(srcset::Symbol, interclass, usefix)
 end
 
 function readgenes(path::String)
-	xy = readdlm(open(path); skipstart = 1)
+	xy = DelimitedFiles.readdlm(open(path); skipstart = 1)
 	x = xy[:,1:1]
 	y = xy[:,2:end]
 	x, y
@@ -337,7 +333,7 @@ function simulate(odesys, sdesys, numspecies, tspan, step, noise::Float64)
 	u0 = [1.0;0.5;1.0;0.5;0.5] # Define initial conditions
 	prob = DifferentialEquations.ODEProblem(odesys,u0,tspan) # Formalise ODE problem
 
-	sol = DifferentialEquations.solve(prob, DifferentialEquations.RK4(), saveat=step) # Solve ODEs with RK4 solver
+	sol = DifferentialEquations.solve(prob, DifferentialEquations.AutoTsit5(DifferentialEquations.Rosenbrock23()), saveat=step)
 	x = reshape(sol.t,(length(sol.t),1))
 	y = hcat(sol.u...)'
 	if noise ≠ 0.0
@@ -360,19 +356,22 @@ function simulate(odesys, sdesys, numspecies, tspan, step, noise::Symbol)
 end
 
 
-function interpolate(x, y, δt, lengthscale, rmfl::Bool, gpnum::Void)
+function interpolate(x, y, δt, lengthscale, rmfl::Bool, gpnum::Nothing)
+	gkern = PyCall.pyimport("GPy.kern")
+	gmodels = PyCall.pyimport("GPy.models")
+
 	kernel = gkern.RBF(input_dim=1)
 	if δt == 25.0
 		xnew = collect(0.0:25.0:1000.0)[:,:]
-		xmu = Array{Float64}((length(xnew),size(y,2)))
-		xvar = Array{Float64}((length(xnew),size(y,2)))
-		xdotmu = Array{Float64}((length(xnew),size(y,2)))
-		xdotvar = Array{Float64}((length(xnew),size(y,2)))
+		xmu = Array{Float64}(undef,(length(xnew),size(y,2)))
+		xvar = Array{Float64}(undef,(length(xnew),size(y,2)))
+		xdotmu = Array{Float64}(undef,(length(xnew),size(y,2)))
+		xdotvar = Array{Float64}(undef,(length(xnew),size(y,2)))
 	else
-		xmu = Array{Float64}(size(y))
-		xvar = Array{Float64}(size(y))
-		xdotmu = Array{Float64}(size(y))
-		xdotvar = Array{Float64}(size(y))
+		xmu = Array{Float64}(undef,size(y))
+		xvar = Array{Float64}(undef,size(y))
+		xdotmu = Array{Float64}(undef,size(y))
+		xdotvar = Array{Float64}(undef,size(y))
 	end
 
 	for i = 1:size(y,2)
@@ -380,24 +379,24 @@ function interpolate(x, y, δt, lengthscale, rmfl::Bool, gpnum::Void)
 
 		m = gmodels.GPRegression(x,Y,kernel)
 
-		# m[:rbf]["variance"][:constrain_fixed](1e-1)
+		# m.rbf."variance".constrain_fixed(1e-1)
 		if lengthscale == "init150"
-			m[:rbf]["lengthscale"] = 150
+			m.rbf."lengthscale" = 150
 		elseif lengthscale ≠ nothing
-			m[:rbf]["lengthscale"][:constrain_fixed](lengthscale)
+			m.rbf."lengthscale".constrain_fixed(lengthscale)
 		end
-		# m[:Gaussian_noise]["variance"][:constrain_fixed](0.1)
+		# m.Gaussian_noise."variance".constrain_fixed(0.1)
 
-		m[:optimize_restarts](num_restarts = 5, verbose=false, parallel=false)
-		m[:plot](plot_density=false)
+		m.optimize_restarts(num_restarts = 5, verbose=false, parallel=false)
+		m.plot(plot_density=false)
 
-		# println(m[:param_array])
+		# println(m.param_array)
 		if δt == 25.0
-			vals = m[:predict](xnew)
-			deriv = m[:predict_jacobian](xnew)
+			vals = m.predict(xnew)
+			deriv = m.predict_jacobian(xnew)
 		else
-			vals = m[:predict](x)
-			deriv = m[:predict_jacobian](x)
+			vals = m.predict(x)
+			deriv = m.predict_jacobian(x)
 		end
 
 		xmu[:,i] = vals[1][:]
@@ -414,11 +413,14 @@ function interpolate(x, y, δt, lengthscale, rmfl::Bool, gpnum::Void)
 end
 
 function interpolate(x, y, δt, lengthscale, rmfl::Bool, gpnum::Int)
+	gkern = PyCall.pyimport("GPy.kern")
+	gmodels = PyCall.pyimport("GPy.models")
+	gmulti = PyCall.pyimport("GPy.util.multioutput")
 	speciesnum = size(y,2)
 
 	if δt == 25.0
 		xnew = collect(0.0:25.0:1000.0)[:,:]
-		eulersx = Vector{Float64}((length(xnew))*2)
+		eulersx = Vector{Float64}(undef,(length(xnew))*2)
 		eulersy = zeros((length(xnew))*2,speciesnum)
 		Δ = 1e-4
 		for (i, val) in enumerate(xnew)
@@ -426,12 +428,12 @@ function interpolate(x, y, δt, lengthscale, rmfl::Bool, gpnum::Int)
 			eulersx[i*2] = val + Δ/2
 		end
 
-		count = zeros(Int, speciesnum)'
+		cnt = zeros(Int, speciesnum)'
 		xmu = zeros(length(xnew),speciesnum)
 		xvar = zeros(length(xnew),speciesnum)
-		xdotmu = Array{Float64}(convert(Int,size(eulersy,1)/2),speciesnum)
+		xdotmu = Array{Float64}(undef,convert(Int,size(eulersy,1)/2),speciesnum)
 	else
-		eulersx = Vector{Float64}((length(x))*2)
+		eulersx = Vector{Float64}(undef,(length(x))*2)
 		eulersy = zeros((length(x))*2,speciesnum)
 		Δ = 1e-4
 		for (i, val) in enumerate(x)
@@ -439,10 +441,10 @@ function interpolate(x, y, δt, lengthscale, rmfl::Bool, gpnum::Int)
 			eulersx[i*2] = val + Δ/2
 		end
 
-		count = zeros(Int, speciesnum)'
+		cnt = zeros(Int, speciesnum)'
 		xmu = zeros(size(y))
 		xvar = zeros(size(y))
-		xdotmu = Array{Float64}(convert(Int,size(eulersy,1)/2),speciesnum)
+		xdotmu = Array{Float64}(undef,convert(Int,size(eulersy,1)/2),speciesnum)
 	end
 
 	for comb in Combinatorics.combinations(1:speciesnum, gpnum)
@@ -451,40 +453,40 @@ function interpolate(x, y, δt, lengthscale, rmfl::Bool, gpnum::Int)
 
 		m = gmodels.GPCoregionalizedRegression([x for i in comb],ytemp,kernel=icm)
 
-		# m[:ICM][:rbf]["variance"][:constrain_fixed](1e-1)
+		# m.ICM.rbf."variance".constrain_fixed(1e-1)
 		if lengthscale == "init150"
-			m[:ICM][:rbf]["lengthscale"] = 150
+			m.ICM.rbf."lengthscale" = 150
 		elseif lengthscale ≠ nothing
-			m[:ICM][:rbf]["lengthscale"][:constrain_fixed](lengthscale)
+			m.ICM.rbf."lengthscale".constrain_fixed(lengthscale)
 		end
-		# m[:mixed_noise][:constrain_fixed](0.1)
+		# m.mixed_noise.constrain_fixed]0.1)
 
-		m[:optimize_restarts](num_restarts = 8, verbose=false, parallel=false)
+		m.optimize_restarts(num_restarts = 8, verbose=false, parallel=false)
 
-		# println(m[:param_array])
+		# println(m.param_array)
 
 		if δt == 25.0
 			for (i,species) in enumerate(comb)
-				count[species] += 1
-				prediction = m[:predict](hcat(xnew,[i-1 for t in xnew]), Y_metadata=Dict("output_index" => Int[i-1 for t in xnew]))
-				eulersy[:,species] .+= m[:predict](hcat(eulersx,[i-1 for t in eulersx]), Y_metadata=Dict("output_index" => Int[i-1 for t in eulersx]))[1][:]
+				cnt[species] += 1
+				prediction = m.predict(hcat(xnew,[i-1 for t in xnew]), Y_metadata=Dict("output_index" => Int[i-1 for t in xnew]))
+				eulersy[:,species] .+= m.predict(hcat(eulersx,[i-1 for t in eulersx]), Y_metadata=Dict("output_index" => Int[i-1 for t in eulersx]))[1][:]
 				xmu[:,species] .+= prediction[1][:]
 				xvar[:,species] .+= prediction[2][:]
 			end
 		else
 			for (i,species) in enumerate(comb)
-				count[species] += 1
-				prediction = m[:predict](hcat(x,[i-1 for t in x]), Y_metadata=Dict("output_index" => Int[i-1 for t in x]))
-				eulersy[:,species] .+= m[:predict](hcat(eulersx,[i-1 for t in eulersx]), Y_metadata=Dict("output_index" => Int[i-1 for t in eulersx]))[1][:]
+				cnt[species] += 1
+				prediction = m.predict(hcat(x,[i-1 for t in x]), Y_metadata=Dict("output_index" => Int[i-1 for t in x]))
+				eulersy[:,species] .+= m.predict(hcat(eulersx,[i-1 for t in eulersx]), Y_metadata=Dict("output_index" => Int[i-1 for t in eulersx]))[1][:]
 				xmu[:,species] .+= prediction[1][:]
 				xvar[:,species] .+= prediction[2][:]
 			end
 		end
 	end
 
-	xmu ./= count
-	xvar ./= count
-	eulersy ./= count
+	xmu ./= cnt
+	xvar ./= cnt
+	eulersy ./= cnt
 
 	for i = 1:length(xdotmu)
 		xdotmu[i] = (eulersy[2*i]-eulersy[2*i-1]) / Δ
@@ -502,20 +504,20 @@ end
 function construct_parsets(numspecies, maxinter, fixparm, interclass::Symbol)
 	allparents = collect(1:numspecies)
 	parsets::Array{Parset,1} = []
-	count::Int = 0
+	cnt::Int = 0
 	interactions = [:Activation, :Repression]
 
 	for i = 1:numspecies
-		count += 1
-		push!(parsets, Parset(count, i, 0, [], [], [], 0.0, 0.0, 0.0, 0.0, 0.0))
+		cnt += 1
+		push!(parsets, Parset(cnt, i, 0, [], [], [], 0.0, 0.0, 0.0, 0.0, 0.0))
 	end
 
 	for i = 1:numspecies
 		for k = 1:maxinter
 			for l in Combinatorics.combinations(filter(e -> e ≠ i, allparents), k)
 				for m in Iterators.product(Iterators.repeated(interactions,k)...)
-					count += 1
-					push!(parsets, Parset(count, i, k, l, collect(m), [], 0.0, 0.0, 0.0, 0.0, 0.0))
+					cnt += 1
+					push!(parsets, Parset(cnt, i, k, l, collect(m), [], 0.0, 0.0, 0.0, 0.0, 0.0))
 				end
 			end
 		end
@@ -532,8 +534,8 @@ function construct_parsets(numspecies, maxinter, fixparm, interclass::Symbol)
 						if i == l[1] && length(l) == 1
 							continue
 						end
-						count += 1
-						push!(parsets, Parset(count,i, k, l, collect(m), [], 0.0, 0.0, 0.0, 0.0, 0.0))
+						cnt += 1
+						push!(parsets, Parset(cnt,i, k, l, collect(m), [], 0.0, 0.0, 0.0, 0.0, 0.0))
 					end
 				end
 			end
@@ -544,17 +546,17 @@ function construct_parsets(numspecies, maxinter, fixparm, interclass::Symbol)
 	"""
 end
 
-function construct_parsets(numspecies, maxinter, fixparm, interclass::Void)
+function construct_parsets(numspecies, maxinter, fixparm, interclass::Nothing)
 	allparents = collect(1:numspecies)
 	gpparsets::Array{GPparset,1} = []
-	count::Int = 0
+	cnt::Int = 0
 
 	for i = 1:numspecies
 		for k = 0:maxinter
 			for l in Combinatorics.combinations(filter(e -> e ≠ i, allparents), k)
-				count += 1
+				cnt += 1
 				parents = [i;l]
-				push!(gpparsets, GPparset(count, i, k+1, parents, [], 0.0, 0.0, 0.0, 0.0, 0.0))
+				push!(gpparsets, GPparset(cnt, i, k+1, parents, [], 0.0, 0.0, 0.0, 0.0, 0.0))
 			end
 		end
 	end
@@ -569,8 +571,8 @@ function construct_parsets(numspecies, maxinter, fixparm, interclass::Void)
 					if i == l[1] && length(l) == 1
 						continue
 					end
-					count += 1
-					push!(gpparsets, GPparset(count, i, k, l, 0.0, 0.0, 0.0, 0.0, 0.0))
+					cnt += 1
+					push!(gpparsets, GPparset(cnt, i, k, l, 0.0, 0.0, 0.0, 0.0, 0.0))
 				end
 			end
 		end
@@ -578,8 +580,8 @@ function construct_parsets(numspecies, maxinter, fixparm, interclass::Void)
 		for i = 0:numspecies
 			for k = 1:maxinter
 				for l in Combinatorics.combinations(filter(e -> e ≠ i, allparents), k)
-					count += 1
-					push!(gpparsets, GPparset(count, i, k, l, [], 0.0, 0.0, 0.0, 0.0, 0.0))
+					cnt += 1
+					push!(gpparsets, GPparset(cnt, i, k, l, [], 0.0, 0.0, 0.0, 0.0, 0.0))
 				end
 			end
 		end
@@ -604,7 +606,7 @@ function construct_ode(topology, fixparm, xmu, xdotmu, interclass)
 				it = 2
 			end
 
-			if topology.intercount == 0
+			if topology.intercnt == 0
 				return sum((basis .- xdotmu[:,topology.speciesnum]) .^ 2.0)
 			end
 
@@ -641,7 +643,7 @@ function construct_ode(topology, fixparm, xmu, xdotmu, interclass)
 				it = 3
 			end
 
-			if topology.intercount == 0
+			if topology.intercnt == 0
 				return sum((basis .- xdotmu[:,topology.speciesnum]) .^ 2.0)
 			end
 
@@ -672,7 +674,7 @@ end
 function optimise_params!(topology::Parset, fixparm, xmu, xdotmu, interclass, initial, lower, upper, prmrep)
 	f = construct_ode(topology, fixparm, xmu, xdotmu, interclass)
 	n = size(xmu,1)
-	if topology.intercount == 0 && fixparm != []
+	if topology.intercnt == 0 && fixparm != []
 		topology.dist = f([])
 		topology.modaic = n * log(topology.dist / n) + 2 * 0
 		topology.modbic = n * log(topology.dist / n) + log(n) * 0
@@ -683,7 +685,7 @@ function optimise_params!(topology::Parset, fixparm, xmu, xdotmu, interclass, in
 			upper = vcat(upper,prmrep[:,3])
 		end
 		if fixparm != []
-			results = Optim.optimize(f, initial[:], lower[:], upper[:], Optim.Fminbox{Optim.NelderMead}())
+			results = Optim.optimize(f, lower[:], upper[:], initial[:], Optim.Fminbox(Optim.NelderMead()))
 		else
 			results = Optim.optimize(f, initial[:], Optim.NelderMead())
 		end
@@ -695,20 +697,23 @@ function optimise_params!(topology::Parset, fixparm, xmu, xdotmu, interclass, in
 end
 
 function optimise_params!(gppar::GPparset, x, y)
-	kernel = gkern.RBF(input_dim=gppar.intercount, variance=1, lengthscale=1)
+	gkern = PyCall.pyimport("GPy.kern")
+	gmodels = PyCall.pyimport("GPy.models")
+
+	kernel = gkern.RBF(input_dim=gppar.intercnt, variance=1, lengthscale=1)
 	m = gmodels.GPRegression(x,y,kernel)
 	try
-		m[:optimize_restarts](num_restarts = 5, verbose=false, parallel=false)
+		m.optimize_restarts(num_restarts = 5, verbose=false, parallel=false)
 	catch
 		warn("Could not complete optimisation of 1 GP model.")
 		cnt = float(readline("error.txt"))
 		write("error.txt", string(cnt+1))
 	end
-	# m[:plot](plot_density=false)
-	gppar.params = m[:param_array]
-	gppar.lik = m[:log_likelihood]()
-	gppar.modaic =  2 * gppar.intercount - 2 * gppar.lik
-	gppar.modbic = log(size(y)[1]) * gppar.intercount - 2 * gppar.lik
+	# m.plot(plot_density=false)
+	gppar.params = m.param_array
+	gppar.lik = m.log_likelihood()
+	gppar.modaic =  2 * gppar.intercnt - 2 * gppar.lik
+	gppar.modbic = log(size(y)[1]) * gppar.intercnt - 2 * gppar.lik
 end
 
 
@@ -733,7 +738,7 @@ function optimise_models!(parsets::Array{Parset,2}, fixparm, xmu, xdotmu, interc
 	end
 end
 
-function optimise_models!(parsets::Array{GPparset,2}, fixparm, xmu, xdotmu, interclass::Void, prmrng, prmrep)
+function optimise_models!(parsets::Array{GPparset,2}, fixparm, xmu, xdotmu, interclass::Nothing, prmrng, prmrep)
 	@progress "Optimising GPs" for gppar in parsets
 		X = xmu[:,gppar.parents]
 		Y = reshape(xdotmu[:,gppar.speciesnum],(:,1))
@@ -809,7 +814,7 @@ function weight_edges(parsets::Array{Parset,2}, suminter, interclass::Symbol)
 	edgeweights
 end
 
-function weight_edges(parsets::Array{GPparset,2}, suminter, interclass::Void)
+function weight_edges(parsets::Array{GPparset,2}, suminter, interclass::Nothing)
 	# Create edgeweight array with columns:
 	# Target, Source, Weight
 
@@ -834,15 +839,15 @@ function get_true_ranks(trueparents, parsets::Array{Parset,2}, suminter)
 	# Create ranks array with columns representing each specie and rows:
 	# Specie Number, ID, Distance, AIC, BIC, Distrank, AICrank, BICrank, AICweight, BICweight
 	if suminter
-		warn("Summed interactions (Activ. + Repr.) are not taken into account during ranking.")
+		warn("Summed interactions (Activ. + Repr.) are not taken into accnt during ranking.")
 	end
 	ranks = []
 	for tp in trueparents
 		for parset in parsets[:, tp.speciesnum]
 			if tp.parents == parset.parents && tp.intertype == parset.intertype
-				distrank = find(sort([i.dist for i in parsets[:,tp.speciesnum]]) .== parset.dist)
-				aicrank = find(sort([i.modaic for i in parsets[:,tp.speciesnum]]) .== parset.modaic)
-				bicrank = find(sort([i.modbic for i in parsets[:,tp.speciesnum]]) .== parset.modbic)
+				distrank = findall(sort([i.dist for i in parsets[:,tp.speciesnum]]) .== parset.dist)
+				aicrank = findall(sort([i.modaic for i in parsets[:,tp.speciesnum]]) .== parset.modaic)
+				bicrank = findall(sort([i.modbic for i in parsets[:,tp.speciesnum]]) .== parset.modbic)
 				if tp.speciesnum == 1
 					ranks = [parset.speciesnum, parset.id, parset.dist, parset.modaic, parset.modbic,
 								distrank, aicrank, bicrank, parset.aicweight, parset.bicweight]
@@ -865,9 +870,9 @@ function get_true_ranks(trueparents, parsets::Array{GPparset,2}, suminter)
 	for tp in trueparents
 		for parset in parsets[:, tp.speciesnum]
 			if tp.parents == parset.parents
-				likrank = find(reverse(sort([i.lik for i in parsets[:, tp.speciesnum]])) .== parset.lik)
-				aicrank = find(sort([i.modaic for i in parsets[:, tp.speciesnum]]) .== parset.modaic)
-				bicrank = find(sort([i.modbic for i in parsets[:, tp.speciesnum]]) .== parset.modbic)
+				likrank = findall(reverse(sort([i.lik for i in parsets[:, tp.speciesnum]])) .== parset.lik)
+				aicrank = findall(sort([i.modaic for i in parsets[:, tp.speciesnum]]) .== parset.modaic)
+				bicrank = findall(sort([i.modbic for i in parsets[:, tp.speciesnum]]) .== parset.modbic)
 				if tp.speciesnum == 1
 					ranks = [parset.speciesnum, parset.id, parset.lik, parset.modaic, parset.modbic,
 								likrank, aicrank, bicrank, parset.aicweight, parset.bicweight]
@@ -887,15 +892,15 @@ function get_best_id(parsets::Array{Parset,2}, suminter)
 	# Create array with top scoring models. Columns representing each specie and rows:
 	# Specie Number, ID of min dist mod, ID of min aic mod, ID of min bic mod, Dist of min dist mod, AIC of min aic mod, BIC of min bic mod
 	if suminter
-		warn("Summed interactions (Activ. + Repr.) are not taken into account during ranking.")
+		warn("Summed interactions (Activ. + Repr.) are not taken into accnt during ranking.")
 	end
 	bestlist = []
 	for j = 1:size(parsets,2)
-		row = find([i.dist for i in parsets[:,j]] .== minimum(i.dist for i in parsets[:,j]))[1]
+		row = findall([i.dist for i in parsets[:,j]] .== minimum(i.dist for i in parsets[:,j]))[1]
 		distid = parsets[row,j].id
-		row = find([i.modaic for i in parsets[:,j]] .== minimum(i.modaic for i in parsets[:,j]))[1]
+		row = findall([i.modaic for i in parsets[:,j]] .== minimum(i.modaic for i in parsets[:,j]))[1]
 		aicid = parsets[row,j].id
-		row = find([i.modbic for i in parsets[:,j]] .== minimum(i.modbic for i in parsets[:,j]))[1]
+		row = findall([i.modbic for i in parsets[:,j]] .== minimum(i.modbic for i in parsets[:,j]))[1]
 		bicid = parsets[row,j].id
 		if j == 1
 			bestlist = [j, distid, aicid, bicid, parsets[distid].dist, parsets[aicid].modaic, parsets[bicid].modbic]
@@ -912,11 +917,11 @@ function get_best_id(parsets::Array{GPparset,2}, suminter)
 
 	bestlist = []
 	for j = 1:size(parsets,2)
-		row = find([i.lik for i in parsets[:,j]] .== maximum(i.lik for i in parsets[:,j]))[1]
+		row = findall([i.lik for i in parsets[:,j]] .== maximum(i.lik for i in parsets[:,j]))[1]
 		distid = parsets[row,j].id
-		row = find([i.modaic for i in parsets[:,j]] .== minimum(i.modaic for i in parsets[:,j]))[1]
+		row = findall([i.modaic for i in parsets[:,j]] .== minimum(i.modaic for i in parsets[:,j]))[1]
 		aicid = parsets[row,j].id
-		row = find([i.modbic for i in parsets[:,j]] .== minimum(i.modbic for i in parsets[:,j]))[1]
+		row = findall([i.modbic for i in parsets[:,j]] .== minimum(i.modbic for i in parsets[:,j]))[1]
 		bicid = parsets[row,j].id
 		if j == 1
 			bestlist = [j, distid, aicid, bicid, parsets[distid].lik, parsets[aicid].modaic, parsets[bicid].modbic]
@@ -930,7 +935,7 @@ end
 
 function edgesummary(edgeweights,trueparents)
 	othersum = [0.0, 0.0]
-	truedges = Array{Any,2}(1,1)
+	truedges = Array{Any,2}(undef,1,1)
 	first = true
 	if size(edgeweights,1) == length(trueparents)^2
 		for i in 1:size(edgeweights,1)
@@ -949,7 +954,7 @@ function edgesummary(edgeweights,trueparents)
 		for i in 1:size(edgeweights,1)
 			thispset = trueparents[convert(Int,edgeweights[i,1])]
 			if edgeweights[i,2] in thispset.parents &&
-					[edgeweights[i,3]] == thispset.intertype[find(thispset.parents .== edgeweights[i,2])]
+					[edgeweights[i,3]] == thispset.intertype[findall(thispset.parents .== edgeweights[i,2])]
 				if first
 					truedges = reshape(edgeweights[i,:],(1,:))
 					first = false
@@ -966,10 +971,10 @@ end
 
 
 function performance(edgeweights,trueparents)
-	truth = Vector{Bool}(0)
+	truth = Vector{Bool}(undef,0)
 	if size(edgeweights,1) == length(trueparents)^2 # GP
-		scoreaic = Vector{Float64}(0)
-		scorebic = Vector{Float64}(0)
+		scoreaic = Vector{Float64}(undef,0)
+		scorebic = Vector{Float64}(undef,0)
 		for i in 1:size(edgeweights,1)
 			if edgeweights[i,1] == edgeweights[i,2]
 				continue
@@ -988,7 +993,7 @@ function performance(edgeweights,trueparents)
 		for i in 1:size(edgeweights,1)
 			thispset = trueparents[convert(Int,edgeweights[i,1])]
 			if edgeweights[i,2] in thispset.parents &&
-					[edgeweights[i,3]] == thispset.intertype[find(thispset.parents .== edgeweights[i,2])]
+					[edgeweights[i,3]] == thispset.intertype[findall(thispset.parents .== edgeweights[i,2])]
 				push!(truth,true)
 			else
 				push!(truth,false)
@@ -1011,9 +1016,9 @@ end
 
 
 function networkinference(y, trueparents)
-	truth = Vector{Bool}(0)
+	truth = Vector{Bool}(undef,0)
 	number_of_genes = size(y, 2)
-	genes = Array{NetworkInference.Gene}(number_of_genes)
+	genes = Array{NetworkInference.Gene}(undef, number_of_genes)
 	labels = collect(1:number_of_genes)'
 	data = vcat(labels,y)
 
@@ -1023,7 +1028,7 @@ function networkinference(y, trueparents)
 
 	network_analysis = NetworkInference.NetworkAnalysis(NetworkInference.PIDCNetworkInference(), genes)
 
-	output = Array{Any}(length(network_analysis.edges),3)
+	output = Array{Any}(undef, length(network_analysis.edges),3)
 
 	for (i,edge) in enumerate(network_analysis.edges)
 		output[i,1] = edge.genes[1].name
